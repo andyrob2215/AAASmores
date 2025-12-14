@@ -495,6 +495,19 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
   const handleDeleteDiscount = async (id) => { if(!window.confirm("Delete?")) return; await fetch(`${API_URL}/discounts/${id}`, { method: 'DELETE' }); fetchAdminData(); };
   const toggleRecipeIngredient = (ingId) => { const currentIds = editingItem.ingredientIds || []; if (currentIds.includes(ingId)) setEditingItem({ ...editingItem, ingredientIds: currentIds.filter(id => id !== ingId) }); else setEditingItem({ ...editingItem, ingredientIds: [...currentIds, ingId] }); };
 
+  const handleViewOrder = async (order) => {
+      setViewingOrder(order);
+      try {
+          const res = await fetch(`${API_URL}/orders/${order.id}`);
+          if (res.ok) {
+              const fullData = await res.json();
+              setViewingOrder(prev => ({ ...prev, ...fullData }));
+          }
+      } catch (e) {
+          console.error("Failed to fetch full order details", e);
+      }
+  };
+
   // SEPARATE VISIBLE AND HIDDEN ITEMS
   const visibleItems = adminData.menuItems?.filter(i => i.is_visible) || [];
   const hiddenItems = adminData.menuItems?.filter(i => !i.is_visible) || [];
@@ -634,7 +647,7 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
             <div className="space-y-6"><div className="flex gap-2 bg-neutral-900 p-4 rounded-xl border border-neutral-800"><div className="flex-1"><label className="text-xs text-neutral-500 block mb-1">Code</label><input type="text" placeholder="SUMMER2025" value={newDiscount.code} onChange={e => setNewDiscount({...newDiscount, code: e.target.value.toUpperCase()})} className="w-full bg-neutral-950 border border-neutral-800 rounded p-2 uppercase" /></div><div className="w-24"><label className="text-xs text-neutral-500 block mb-1">Type</label><select value={newDiscount.type} onChange={e => setNewDiscount({...newDiscount, type: e.target.value})} className="w-full bg-neutral-950 border border-neutral-800 rounded p-2"><option value="percent">% Off</option><option value="flat">$ Off</option></select></div><div className="w-24"><label className="text-xs text-neutral-500 block mb-1">Value</label><input type="number" placeholder="10" value={newDiscount.value} onChange={e => setNewDiscount({...newDiscount, value: e.target.value})} className="w-full bg-neutral-950 border border-neutral-800 rounded p-2" /></div><button onClick={handleAddDiscount} className="bg-green-600 hover:bg-green-700 px-4 rounded font-bold mt-5">Create</button></div><div className="grid gap-3">{adminData.discounts?.map(d => (<div key={d.id} className="bg-neutral-900 border border-neutral-800 p-4 rounded-lg flex justify-between items-center"><div className="flex items-center gap-3"><div className="bg-neutral-800 p-2 rounded"><Tag className="w-5 h-5 text-orange-500" /></div><div><div className="font-bold text-lg">{d.code}</div><div className="text-neutral-500 text-sm">{d.type === 'percent' ? `${d.value}% Off` : `$${parseFloat(d.value).toFixed(2)} Off`}</div></div></div><button onClick={() => handleDeleteDiscount(d.id)} className="text-neutral-500 hover:text-red-500"><Trash2 className="w-5 h-5" /></button></div>))}</div></div>
         )}
         {adminTab === 'history' && (
-          <div className="space-y-4"><div className="overflow-x-auto rounded-xl border border-neutral-800"><table className="w-full text-left text-sm text-neutral-400"><thead className="bg-neutral-900 uppercase text-xs font-bold text-neutral-500"><tr><th className="px-6 py-4">ID</th><th className="px-6 py-4">Date</th><th className="px-6 py-4">Time</th><th className="px-6 py-4">Customer</th><th className="px-6 py-4 text-right">Total</th></tr></thead><tbody className="divide-y divide-neutral-800 bg-neutral-900/50">{adminData.history.map(h => (<tr key={h.id} onClick={() => setViewingOrder(h)} className="hover:bg-neutral-800 cursor-pointer transition-colors"><td className="px-6 py-4 font-mono text-orange-500">#{h.id}</td><td className="px-6 py-4">{formatDate(h.created_at)}</td><td className="px-6 py-4">{formatTime(h.created_at)}</td><td className="px-6 py-4 font-bold text-white">{h.customer_name}</td><td className="px-6 py-4 text-right text-white">${parseFloat(h.total_price).toFixed(2)}</td></tr>))}</tbody></table></div></div>
+          <div className="space-y-4"><div className="overflow-x-auto rounded-xl border border-neutral-800"><table className="w-full text-left text-sm text-neutral-400"><thead className="bg-neutral-900 uppercase text-xs font-bold text-neutral-500"><tr><th className="px-6 py-4">ID</th><th className="px-6 py-4">Date</th><th className="px-6 py-4">Time</th><th className="px-6 py-4">Customer</th><th className="px-6 py-4 text-right">Total</th></tr></thead><tbody className="divide-y divide-neutral-800 bg-neutral-900/50">{adminData.history.map(h => (<tr key={h.id} onClick={() => handleViewOrder(h)} className="hover:bg-neutral-800 cursor-pointer transition-colors"><td className="px-6 py-4 font-mono text-orange-500">#{h.id}</td><td className="px-6 py-4">{formatDate(h.created_at)}</td><td className="px-6 py-4">{formatTime(h.created_at)}</td><td className="px-6 py-4 font-bold text-white">{h.customer_name}</td><td className="px-6 py-4 text-right text-white">${parseFloat(h.total_price).toFixed(2)}</td></tr>))}</tbody></table></div></div>
         )}
       </div>
       

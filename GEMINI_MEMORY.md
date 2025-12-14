@@ -22,15 +22,13 @@ This is a React frontend for the "AAASmores" ordering system.
     -   Updated `CartView`, `AdminDashboard`, and `OrderDetailsModal` to parse this string.
     -   **Result:** Standard items show ingredients *without* the "CUSTOM" tag; modified items show the tag.
 
-## Pending Tasks
+## Completed Tasks
 -   **GitHub Integration:**
     -   Goal: Upload current code to `https://github.com/andyrob2215/AAASmores`.
-    -   **Status:** BLOCKED. The `git` command is not recognized in the current terminal session.
-    -   **Action Required:** User is restarting the terminal/installing Git to fix the PATH issue.
+    -   Initialized repository.
+    -   Committed all current files.
+    -   Added remote `https://github.com/andyrob2215/AAASmores`.
+    -   Pushed to master branch.
 
 ## Instructions for Next Session
-1.  Verify `git` is working by running `git --version`.
-2.  Initialize the repository (if needed).
-3.  Commit all current files.
-4.  Add remote `https://github.com/andyrob2215/AAASmores`.
-5.  Push to main/master.
+No specific instructions for the next session at this time.
