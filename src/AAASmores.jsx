@@ -71,7 +71,7 @@ const Hero = ({ setView, siteConfig }) => {
         <img src={bgUrl} alt="Hero Background" className="absolute inset-0 w-full h-full object-cover opacity-50 pointer-events-none" />
       )}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-900/20 via-neutral-950/80 to-neutral-950 pointer-events-none"></div>
-      <div className="relative z-10 flex flex-col items-center w-full max-w-4xl bg-black/40 backdrop-blur-sm p-8 rounded-3xl border border-white/10 shadow-2xl">
+      <div className="relative z-10 flex flex-col items-center w-full max-w-4xl bg-black/20 backdrop-blur-[2px] p-8 rounded-3xl border border-white/10 shadow-2xl">
         <Flame className="w-24 h-24 text-orange-500 mb-6 drop-shadow-[0_0_25px_rgba(251,140,0,0.6)] animate-pulse" />
         <h1 className="text-6xl font-black text-white mb-4 tracking-tighter">FIRE. <span className="text-orange-500">CHOCOLATE.</span> <br/>GOOD TIMES.</h1>
         <p className="text-neutral-400 text-lg max-w-xl mb-10">The ultimate campfire experience.</p>
