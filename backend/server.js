@@ -134,9 +134,22 @@ app.post('/api/reviews', async (req, res) => {
 app.get('/api/config', async (req, res) => {
     try {
         await pool.query("CREATE TABLE IF NOT EXISTS site_config (config_key VARCHAR(50) PRIMARY KEY, config_value TEXT)");
-        const result = await pool.query("SELECT config_value FROM site_config WHERE config_key = 'deliveries_enabled'");
-        const enabled = result.rows.length > 0 ? result.rows[0].config_value === 'true' : true;
-        res.json({ deliveries_enabled: enabled });
+        const result = await pool.query("SELECT * FROM site_config");
+        const config = result.rows.reduce((acc, row) => {
+            acc[row.config_key] = row.config_value;
+            return acc;
+        }, {});
+        
+        // Defaults
+        if (config.deliveries_enabled === undefined) config.deliveries_enabled = 'true';
+        
+        // Parse booleans
+        const response = {
+            deliveries_enabled: config.deliveries_enabled === 'true',
+            hero_background_url: config.hero_background_url || null,
+            hero_background_type: config.hero_background_type || null
+        };
+        res.json(response);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -147,6 +160,27 @@ app.post('/api/config', authenticateToken, async (req, res) => {
         await pool.query("INSERT INTO site_config (config_key, config_value) VALUES ('deliveries_enabled', $1) ON CONFLICT (config_key) DO UPDATE SET config_value = $1", [String(deliveries_enabled)]);
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/config/background', authenticateToken, upload.single('file'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    
+    const fileUrl = `/uploads/${req.file.filename}`;
+    const fileType = req.file.mimetype.startsWith('video') ? 'video' : 'image';
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query("INSERT INTO site_config (config_key, config_value) VALUES ('hero_background_url', $1) ON CONFLICT (config_key) DO UPDATE SET config_value = $1", [fileUrl]);
+        await client.query("INSERT INTO site_config (config_key, config_value) VALUES ('hero_background_type', $1) ON CONFLICT (config_key) DO UPDATE SET config_value = $1", [fileType]);
+        await client.query('COMMIT');
+        res.json({ success: true, url: fileUrl, type: fileType });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ error: e.message });
+    } finally {
+        client.release();
+    }
 });
 
 app.post('/api/discounts/validate', async (req, res) => {

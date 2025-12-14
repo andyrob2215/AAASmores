@@ -59,21 +59,30 @@ const Navbar = ({ view, setView, cart }) => (
   </nav>
 );
 
-const Hero = ({ setView }) => (
-  <div className="min-h-[85vh] flex flex-col items-center justify-center text-center px-4 relative overflow-hidden">
-    <video autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover opacity-50 pointer-events-none"><source src="/campfire_v2.mp4" type="video/mp4" /></video>
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-900/20 via-neutral-950/80 to-neutral-950 pointer-events-none"></div>
-    <div className="relative z-10 flex flex-col items-center w-full max-w-4xl bg-black/40 backdrop-blur-sm p-8 rounded-3xl border border-white/10 shadow-2xl">
-      <Flame className="w-24 h-24 text-orange-500 mb-6 drop-shadow-[0_0_25px_rgba(251,140,0,0.6)] animate-pulse" />
-      <h1 className="text-6xl font-black text-white mb-4 tracking-tighter">FIRE. <span className="text-orange-500">CHOCOLATE.</span> <br/>GOOD TIMES.</h1>
-      <p className="text-neutral-400 text-lg max-w-xl mb-10">The ultimate campfire experience.</p>
-      <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
-        <button onClick={() => setView('menu')} className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-orange-900/30 transition-all">Order Now</button>
-        <button onClick={() => setView('queue')} className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white py-4 rounded-xl font-bold text-lg border border-neutral-700">Check ETA</button>
+const Hero = ({ setView, siteConfig }) => {
+  const bgUrl = siteConfig?.hero_background_url ? `${API_URL}${siteConfig.hero_background_url}` : '/campfire_v2.mp4';
+  const isVideo = siteConfig?.hero_background_type === 'video' || !siteConfig?.hero_background_url;
+
+  return (
+    <div className="min-h-[85vh] flex flex-col items-center justify-center text-center px-4 relative overflow-hidden">
+      {isVideo ? (
+        <video key={bgUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover opacity-50 pointer-events-none"><source src={bgUrl} type="video/mp4" /></video>
+      ) : (
+        <img src={bgUrl} alt="Hero Background" className="absolute inset-0 w-full h-full object-cover opacity-50 pointer-events-none" />
+      )}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-900/20 via-neutral-950/80 to-neutral-950 pointer-events-none"></div>
+      <div className="relative z-10 flex flex-col items-center w-full max-w-4xl bg-black/40 backdrop-blur-sm p-8 rounded-3xl border border-white/10 shadow-2xl">
+        <Flame className="w-24 h-24 text-orange-500 mb-6 drop-shadow-[0_0_25px_rgba(251,140,0,0.6)] animate-pulse" />
+        <h1 className="text-6xl font-black text-white mb-4 tracking-tighter">FIRE. <span className="text-orange-500">CHOCOLATE.</span> <br/>GOOD TIMES.</h1>
+        <p className="text-neutral-400 text-lg max-w-xl mb-10">The ultimate campfire experience.</p>
+        <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
+          <button onClick={() => setView('menu')} className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-orange-900/30 transition-all">Order Now</button>
+          <button onClick={() => setView('queue')} className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white py-4 rounded-xl font-bold text-lg border border-neutral-700">Check ETA</button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 
 const ReviewsView = ({ API_URL, showNotification }) => {
@@ -549,6 +558,24 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
   const visibleItems = adminData.menuItems?.filter(i => i.is_visible) || [];
   const hiddenItems = adminData.menuItems?.filter(i => !i.is_visible) || [];
 
+  const handleBackgroundUpload = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+          const res = await fetch(`${API_URL}/config/background`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` },
+              body: formData
+          });
+          if (res.ok) showNotification('Background Updated (Refresh to see)');
+          else showNotification('Upload Failed', 'error');
+      } catch (err) {
+          showNotification('Upload Failed', 'error');
+      }
+  };
+
   if (!staffAuth) return (
     <div className="min-h-screen flex items-center justify-center bg-black relative z-50">
       <div className="w-full max-w-sm p-6">
@@ -589,9 +616,18 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
       </div>
       <div className="max-w-4xl mx-auto p-4">
         {adminTab === 'settings' && (
-             <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl">
-                 <h3 className="text-xl font-bold mb-4 text-white">Store Configuration</h3>
-                 <div className="flex items-center justify-between"><div><div className="text-lg font-bold text-white">Accept Deliveries</div><div className="text-sm text-neutral-400">Enable or disable delivery orders for customers.</div></div><button onClick={() => toggleDelivery(!adminData.deliveryEnabled)} className={`w-16 h-8 rounded-full p-1 transition-colors ${adminData.deliveryEnabled ? 'bg-green-600' : 'bg-neutral-700'}`}><div className={`w-6 h-6 rounded-full bg-white transform transition-transform ${adminData.deliveryEnabled ? 'translate-x-8' : 'translate-x-0'}`} /></button></div>
+             <div className="space-y-6">
+                 <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl">
+                     <h3 className="text-xl font-bold mb-4 text-white">Store Configuration</h3>
+                     <div className="flex items-center justify-between"><div><div className="text-lg font-bold text-white">Accept Deliveries</div><div className="text-sm text-neutral-400">Enable or disable delivery orders for customers.</div></div><button onClick={() => toggleDelivery(!adminData.deliveryEnabled)} className={`w-16 h-8 rounded-full p-1 transition-colors ${adminData.deliveryEnabled ? 'bg-green-600' : 'bg-neutral-700'}`}><div className={`w-6 h-6 rounded-full bg-white transform transition-transform ${adminData.deliveryEnabled ? 'translate-x-8' : 'translate-x-0'}`} /></button></div>
+                 </div>
+                 <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl">
+                     <h3 className="text-xl font-bold mb-4 text-white">Home Background</h3>
+                     <div className="flex items-center gap-4">
+                         <label className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg cursor-pointer font-bold flex items-center gap-2"><ImageIcon className="w-4 h-4"/> Upload New (Image/Video)<input type="file" accept="image/*,video/*" className="hidden" onChange={handleBackgroundUpload} /></label>
+                         {siteConfig?.hero_background_url && <span className="text-green-500 text-sm">Custom background active</span>}
+                     </div>
+                 </div>
              </div>
         )}
         {adminTab === 'active' && (
@@ -730,7 +766,7 @@ const App = () => {
   const [notification, setNotification] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [deliveryEnabled, setDeliveryEnabled] = useState(true);
+  const [siteConfig, setSiteConfig] = useState({ deliveries_enabled: true, hero_background_url: null, hero_background_type: null });
   
   const [staffAuth, setStaffAuth] = useState(() => localStorage.getItem('aaasmores_auth') === 'true');
   const [customizingItem, setCustomizingItem] = useState(null);
@@ -740,7 +776,7 @@ const App = () => {
 
   const fetchMenu = useCallback(async () => { if (!USE_LIVE_API) return; try { const res = await fetch(`${API_URL}/menu?_t=${Date.now()}`, { headers: { 'Cache-Control': 'no-store' } }); const data = await res.json(); setMenuItems(data.map(i => ({...i, price: parseFloat(i.price)}))); } catch (e) { showNotification("Error loading menu", "error"); } }, []);
   const fetchIngredients = useCallback(async () => { try { const res = await fetch(`${API_URL}/ingredients?_t=${Date.now()}`, { headers: { 'Cache-Control': 'no-store' } }); setAllIngredients(await res.json()); } catch (e) { console.error(e); } }, []);
-  const fetchConfig = useCallback(async () => { try { const res = await fetch(`${API_URL}/config?_t=${Date.now()}`, { headers: { 'Cache-Control': 'no-store' } }); const data = await res.json(); setDeliveryEnabled(data.deliveries_enabled); } catch (e) { console.error(e); } }, []);
+  const fetchConfig = useCallback(async () => { try { const res = await fetch(`${API_URL}/config?_t=${Date.now()}`, { headers: { 'Cache-Control': 'no-store' } }); const data = await res.json(); setSiteConfig(data); } catch (e) { console.error(e); } }, []);
 
   const fetchQueue = useCallback(async () => { 
       try { 
@@ -791,14 +827,14 @@ const App = () => {
       {notification && <div className={`fixed bottom-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg text-white font-bold ${notification.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`}>{notification.msg}</div>}
       {lastUpdated && lastUpdated.error && view !== 'admin' && (<div className="bg-red-600 text-white p-2 text-center text-sm font-bold flex items-center justify-center gap-2"><AlertCircle className="w-4 h-4" /> Connection Lost ({lastUpdated.msg || 'Unknown'}). Retrying...</div>)}
       <main className="pb-20">
-        {view === 'home' && <Hero setView={setView} />}
+        {view === 'home' && <Hero setView={setView} siteConfig={siteConfig} />}
         {view === 'menu' && <MenuGrid menuItems={menuItems} openCustomizer={setCustomizingItem} />}
         {view === 'queue' && <QueueBoard queue={queue} lastUpdated={lastUpdated} />}
         {view === 'reviews' && <ReviewsView API_URL={API_URL} showNotification={showNotification} />}
-        {view === 'cart' && <CartView cart={cart} updateCartQty={updateCartQty} submitOrder={submitOrder} view={view} setView={setView} API_URL={API_URL} deliveryEnabled={deliveryEnabled} />}
+        {view === 'cart' && <CartView cart={cart} updateCartQty={updateCartQty} submitOrder={submitOrder} view={view} setView={setView} API_URL={API_URL} deliveryEnabled={siteConfig.deliveries_enabled} />}
         {view === 'success' && <SuccessView setView={setView} />}
         {(view === 'admin-login' || view === 'admin') && 
-          <AdminDashboard setView={setView} staffAuth={staffAuth} setStaffAuth={setStaffAuth} API_URL={API_URL} showNotification={showNotification} />
+          <AdminDashboard setView={setView} staffAuth={staffAuth} setStaffAuth={setStaffAuth} API_URL={API_URL} showNotification={showNotification} siteConfig={siteConfig} />
         }
       </main>
 
