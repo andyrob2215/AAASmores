@@ -428,7 +428,7 @@ const OrderDetailsModal = ({ order, onClose }) => {
 };
 
 // --- ADMIN DASHBOARD (Self-Contained Fetching) ---
-const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, setView }) => {
+const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, setView, siteConfig }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [adminTab, setAdminTab] = useState('active'); 
