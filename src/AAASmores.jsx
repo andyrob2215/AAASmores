@@ -124,7 +124,7 @@ const CustomizationModal = ({ item, allIngredients, onClose, onConfirm }) => {
     const initial = {};
     allIngredients.forEach(ing => initial[ing.id] = 0);
     baseIngredients.forEach(base => {
-        initial[base.id] = (initial[base.id] || 0) + 1;
+        initial[base.id] = base.qty || 1;
     });
     return initial;
   });
@@ -133,7 +133,8 @@ const CustomizationModal = ({ item, allIngredients, onClose, onConfirm }) => {
     let extraCount = 0;
     Object.keys(counts).forEach(ingId => {
         const currentQty = counts[ingId];
-        const baseQty = baseIngredients.filter(b => b.id === parseInt(ingId)).length;
+        const baseItem = baseIngredients.find(b => b.id === parseInt(ingId));
+        const baseQty = baseItem ? (baseItem.qty || 1) : 0;
         if (currentQty > baseQty) extraCount += (currentQty - baseQty);
     });
     return extraCount * 0.50;
@@ -145,7 +146,7 @@ const CustomizationModal = ({ item, allIngredients, onClose, onConfirm }) => {
     const baseCounts = {};
     allIngredients.forEach(ing => baseCounts[ing.id] = 0);
     baseIngredients.forEach(base => {
-        baseCounts[base.id] = (baseCounts[base.id] || 0) + 1;
+        baseCounts[base.id] = base.qty || 1;
     });
     const isCustom = Object.keys(counts).some(id => counts[id] !== baseCounts[id]);
 
@@ -528,7 +529,17 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
   const handleDeleteIngredient = async (id) => { if(!window.confirm("Delete?")) return; await fetch(`${API_URL}/ingredients/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` } }); fetchAdminData(); };
   const handleAddDiscount = async () => { if(!newDiscount.code) return; await fetch(`${API_URL}/discounts`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` }, body: JSON.stringify(newDiscount) }); setNewDiscount({ code: '', type: 'percent', value: '' }); fetchAdminData(); };
   const handleDeleteDiscount = async (id) => { if(!window.confirm("Delete?")) return; await fetch(`${API_URL}/discounts/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` } }); fetchAdminData(); };
-  const toggleRecipeIngredient = (ingId) => { const currentIds = editingItem.ingredientIds || []; if (currentIds.includes(ingId)) setEditingItem({ ...editingItem, ingredientIds: currentIds.filter(id => id !== ingId) }); else setEditingItem({ ...editingItem, ingredientIds: [...currentIds, ingId] }); };
+  const updateRecipeIngredient = (ingId, delta) => {
+      const current = editingItem.ingredientIds || [];
+      const existingIndex = current.findIndex(i => i.id === ingId);
+      if (existingIndex >= 0) {
+          const newQty = current[existingIndex].qty + delta;
+          if (newQty <= 0) setEditingItem({ ...editingItem, ingredientIds: current.filter(i => i.id !== ingId) });
+          else { const newIngs = [...current]; newIngs[existingIndex].qty = newQty; setEditingItem({ ...editingItem, ingredientIds: newIngs }); }
+      } else if (delta > 0) {
+          setEditingItem({ ...editingItem, ingredientIds: [...current, { id: ingId, qty: delta }] });
+      }
+  };
 
   const handleViewOrder = (order) => {
       setViewingOrder(order);
@@ -622,7 +633,7 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
                   {visibleItems.map(item => (
                     <div key={item.id} className="bg-neutral-900 border border-neutral-800 p-4 rounded-xl flex justify-between items-center">
                       <div><div className="font-bold text-lg">{item.name}</div><div className="text-neutral-500 text-sm">${parseFloat(item.price).toFixed(2)}</div></div>
-                      <div className="flex gap-2"><button onClick={() => { const relatedIngredients = adminData.recipes.filter(r => r.menu_item_id === item.id).map(r => r.ingredient_id); setEditingItem({ ...item, ingredientIds: relatedIngredients }); }} className="p-2 bg-neutral-800 rounded hover:bg-white hover:text-black"><Edit className="w-4 h-4" /></button><button onClick={() => handleDeleteMenu(item.id)} className="p-2 bg-neutral-800 rounded hover:bg-red-600 hover:text-white"><Trash2 className="w-4 h-4" /></button></div>
+                      <div className="flex gap-2"><button onClick={() => { const relatedIngredients = adminData.recipes.filter(r => r.menu_item_id === item.id).map(r => ({ id: r.ingredient_id, qty: r.quantity || 1 })); setEditingItem({ ...item, ingredientIds: relatedIngredients }); }} className="p-2 bg-neutral-800 rounded hover:bg-white hover:text-black"><Edit className="w-4 h-4" /></button><button onClick={() => handleDeleteMenu(item.id)} className="p-2 bg-neutral-800 rounded hover:bg-red-600 hover:text-white"><Trash2 className="w-4 h-4" /></button></div>
                     </div>
                   ))}
                 </div>
@@ -636,7 +647,7 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
                             {hiddenItems.map(item => (
                                 <button 
                                     key={item.id} 
-                                    onClick={() => { const relatedIngredients = adminData.recipes.filter(r => r.menu_item_id === item.id).map(r => r.ingredient_id); setEditingItem({ ...item, ingredientIds: relatedIngredients }); }}
+                                    onClick={() => { const relatedIngredients = adminData.recipes.filter(r => r.menu_item_id === item.id).map(r => ({ id: r.ingredient_id, qty: r.quantity || 1 })); setEditingItem({ ...item, ingredientIds: relatedIngredients }); }}
                                     className="bg-neutral-900 border border-red-900/50 text-neutral-400 hover:text-white hover:border-orange-500 px-3 py-1 rounded-full text-sm flex items-center gap-2 transition-colors"
                                 >
                                     {item.name} <EyeOff className="w-3 h-3" />
@@ -663,7 +674,20 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
                   {/* IMAGE UPLOAD */}
                   <div><label className="text-xs text-neutral-500 block mb-1">Item Image</label><label className="w-full bg-neutral-950 border border-neutral-800 border-dashed rounded p-4 flex flex-col items-center justify-center cursor-pointer hover:border-orange-500/50"><ImageIcon className="w-6 h-6 text-neutral-500 mb-2" /><span className="text-xs text-neutral-400">{imageFile ? imageFile.name : (editingItem.image_url ? 'Replace Image' : 'Upload Image')}</span><input type="file" accept="image/*" className="hidden" onChange={e => setImageFile(e.target.files[0])} /></label>{editingItem.image_url && !imageFile && <div className="mt-2 text-xs text-green-500">Current image set</div>}</div>
 
-                  <div><label className="text-xs text-neutral-500 block mb-2">Recipe (Required Ingredients)</label><div className="grid grid-cols-2 md:grid-cols-3 gap-2 bg-neutral-950 p-4 rounded border border-neutral-800 max-h-48 overflow-y-auto">{adminData.ingredients.map(ing => (<label key={ing.id} className="flex items-center gap-2 text-sm cursor-pointer hover:text-orange-400"><input type="checkbox" checked={editingItem.ingredientIds?.includes(ing.id)} onChange={() => toggleRecipeIngredient(ing.id)} className="rounded bg-neutral-800 border-neutral-700 text-orange-600 focus:ring-0" />{ing.name}</label>))}</div></div>
+                  <div><label className="text-xs text-neutral-500 block mb-2">Recipe (Required Ingredients)</label><div className="grid grid-cols-1 md:grid-cols-2 gap-2 bg-neutral-950 p-4 rounded border border-neutral-800 max-h-60 overflow-y-auto">{adminData.ingredients.map(ing => {
+                      const current = editingItem.ingredientIds?.find(i => i.id === ing.id);
+                      const qty = current ? current.qty : 0;
+                      return (
+                          <div key={ing.id} className={`flex justify-between items-center p-2 rounded ${qty > 0 ? 'bg-orange-900/20 border border-orange-500/30' : 'bg-neutral-900 border border-neutral-800'}`}>
+                              <span className={`text-sm ${qty > 0 ? 'text-orange-200' : 'text-neutral-500'}`}>{ing.name}</span>
+                              <div className="flex items-center gap-2">
+                                  <button type="button" onClick={() => updateRecipeIngredient(ing.id, -1)} className="p-1 bg-neutral-800 hover:bg-neutral-700 rounded text-neutral-400"><Minus className="w-3 h-3" /></button>
+                                  <span className={`text-sm font-bold w-4 text-center ${qty > 0 ? 'text-white' : 'text-neutral-600'}`}>{qty}</span>
+                                  <button type="button" onClick={() => updateRecipeIngredient(ing.id, 1)} className="p-1 bg-neutral-800 hover:bg-neutral-700 rounded text-neutral-400"><Plus className="w-3 h-3" /></button>
+                              </div>
+                          </div>
+                      );
+                  })}</div></div>
                   <div className="flex gap-2 pt-4"><button type="submit" className="flex-1 bg-green-600 hover:bg-green-700 py-2 rounded font-bold flex items-center justify-center gap-2"><Save className="w-4 h-4"/> Save Item</button><button type="button" onClick={() => { setEditingItem(null); setImageFile(null); }} className="px-6 bg-neutral-800 hover:bg-white hover:text-black rounded">Cancel</button></div>
               </form>
             )}

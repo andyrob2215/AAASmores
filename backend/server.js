@@ -72,7 +72,7 @@ app.get('/api/menu', async (req, res) => {
         const query = `
             SELECT m.*, 
             (
-                SELECT json_agg(json_build_object('id', i.id, 'name', i.name))
+                SELECT json_agg(json_build_object('id', i.id, 'name', i.name, 'qty', mr.quantity))
                 FROM menu_recipes mr
                 JOIN ingredients i ON mr.ingredient_id = i.id
                 WHERE mr.menu_item_id = m.id
@@ -276,7 +276,17 @@ app.post('/api/menu', authenticateToken, upload.single('image'), async (req, res
     const { name, description, price, category, ingredientIds, manual_availability, is_visible } = req.body;
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
     let ingredients = [];
-    if (ingredientIds) { try { ingredients = JSON.parse(ingredientIds); } catch(e) { ingredients = [ingredientIds]; } }
+    if (ingredientIds) { 
+        try { 
+            ingredients = JSON.parse(ingredientIds); 
+            // Normalize: If it's just [1, 2], convert to [{id:1, qty:1}, {id:2, qty:1}]
+            if (ingredients.length > 0 && typeof ingredients[0] !== 'object') {
+                ingredients = ingredients.map(id => ({ id, qty: 1 }));
+            }
+        } catch(e) { 
+            ingredients = []; 
+        } 
+    }
 
     const client = await pool.connect();
     try {
@@ -287,7 +297,9 @@ app.post('/api/menu', authenticateToken, upload.single('image'), async (req, res
         );
         const newItemId = resItem.rows[0].id;
         if (ingredients.length > 0) {
-            for (const ingId of ingredients) await client.query('INSERT INTO menu_recipes (menu_item_id, ingredient_id) VALUES ($1, $2)', [newItemId, ingId]);
+            for (const item of ingredients) {
+                await client.query('INSERT INTO menu_recipes (menu_item_id, ingredient_id, quantity) VALUES ($1, $2, $3)', [newItemId, item.id, item.qty || 1]);
+            }
         }
         await client.query('COMMIT');
         res.json({ success: true });
@@ -300,7 +312,16 @@ app.put('/api/menu/:id', authenticateToken, upload.single('image'), async (req, 
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : undefined;
     
     let ingredients = [];
-    if (ingredientIds) { try { ingredients = JSON.parse(ingredientIds); } catch(e) { ingredients = [ingredientIds]; } }
+    if (ingredientIds) { 
+        try { 
+            ingredients = JSON.parse(ingredientIds); 
+            if (ingredients.length > 0 && typeof ingredients[0] !== 'object') {
+                ingredients = ingredients.map(id => ({ id, qty: 1 }));
+            }
+        } catch(e) { 
+            ingredients = []; 
+        } 
+    }
 
     const client = await pool.connect();
     try {
@@ -321,7 +342,9 @@ app.put('/api/menu/:id', authenticateToken, upload.single('image'), async (req, 
 
         if (ingredientIds) {
             await client.query('DELETE FROM menu_recipes WHERE menu_item_id = $1', [id]);
-            for (const ingId of ingredients) await client.query('INSERT INTO menu_recipes (menu_item_id, ingredient_id) VALUES ($1, $2)', [id, ingId]);
+            for (const item of ingredients) {
+                await client.query('INSERT INTO menu_recipes (menu_item_id, ingredient_id, quantity) VALUES ($1, $2, $3)', [id, item.id, item.qty || 1]);
+            }
         }
         await client.query('COMMIT');
         res.json({ success: true });

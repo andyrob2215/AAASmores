@@ -41,9 +41,17 @@ This is a React frontend for the "AAASmores" ordering system.
     -   Modified `unraid_stuff/appdata/server.js` to update the `/api/admin/dashboard` history query.
     -   It now aggregates `items` (JSON) similarly to the pending orders query, ensuring history items have details.
     -   **Action Required:** User must rebuild/restart the backend service.
-9.  **Deployment:**
-    -   Ran `npm run build` to generate production build.
-    -   Copied contents of `dist/` to `unraid_stuff/www/`.
+9.  **Security Implementation (CRITICAL):**
+    -   **Backend:**
+        -   Added `jsonwebtoken`, `dotenv`, `bcryptjs`.
+        -   Updated `server.js` with `authenticateToken` middleware protecting `/api/admin` and modification routes.
+        -   Updated `schema.sql` to include `staff_users` table and default admin.
+    -   **Frontend:**
+        -   Updated `AdminDashboard` to store JWT in `localStorage` and send `Authorization: Bearer` header.
+    -   **Deployment:**
+        -   Rebuilt frontend and deployed to `unraid_stuff/www`.
+        -   Pushed all changes to GitHub.
+        -   **Action Required:** User must run `npm install` in backend, apply SQL migration (`staff_users`), and restart server.
 
 ## Completed Tasks
 -   **GitHub Integration:**

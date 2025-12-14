@@ -17,7 +17,24 @@ CREATE TABLE IF NOT EXISTS menu_items (
     price DECIMAL(10, 2) NOT NULL,
     category VARCHAR(50) DEFAULT 'Smore', -- 'Smore', 'Drink', 'Side'
     image_url TEXT,
-    is_available BOOLEAN DEFAULT TRUE
+    is_available BOOLEAN DEFAULT TRUE,
+    is_visible BOOLEAN DEFAULT TRUE,
+    is_deleted BOOLEAN DEFAULT FALSE
+);
+
+-- 2a. Ingredients Table
+CREATE TABLE IF NOT EXISTS ingredients (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    is_in_stock BOOLEAN DEFAULT TRUE
+);
+
+-- 2b. Menu Recipes (Junction Table with Quantity)
+CREATE TABLE IF NOT EXISTS menu_recipes (
+    menu_item_id INTEGER REFERENCES menu_items(id) ON DELETE CASCADE,
+    ingredient_id INTEGER REFERENCES ingredients(id) ON DELETE CASCADE,
+    quantity INTEGER DEFAULT 1,
+    PRIMARY KEY (menu_item_id, ingredient_id)
 );
 
 -- 3. Orders Table
