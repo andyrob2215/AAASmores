@@ -61,17 +61,20 @@ const Navbar = ({ view, setView, cart }) => (
 
 const Hero = ({ setView }) => (
   <div className="min-h-[85vh] flex flex-col items-center justify-center text-center px-4 relative overflow-hidden">
-    <video autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover -z-20 opacity-50"><source src="/campfire.mp4" type="video/mp4" /></video>
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-900/20 via-neutral-950/80 to-neutral-950 -z-10"></div>
-    <Flame className="w-24 h-24 text-orange-500 mb-6 drop-shadow-[0_0_25px_rgba(251,140,0,0.6)] animate-pulse" />
-    <h1 className="text-6xl font-black text-white mb-4 tracking-tighter">FIRE. <span className="text-orange-500">CHOCOLATE.</span> <br/>GOOD TIMES.</h1>
-    <p className="text-neutral-400 text-lg max-w-xl mb-10">The ultimate campfire experience.</p>
-    <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
-      <button onClick={() => setView('menu')} className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-orange-900/30 transition-all">Order Now</button>
-      <button onClick={() => setView('queue')} className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white py-4 rounded-xl font-bold text-lg border border-neutral-700">Check ETA</button>
+    <video autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover opacity-50 pointer-events-none"><source src="/campfire_v2.mp4" type="video/mp4" /></video>
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-900/20 via-neutral-950/80 to-neutral-950 pointer-events-none"></div>
+    <div className="relative z-10 flex flex-col items-center w-full max-w-4xl bg-black/40 backdrop-blur-sm p-8 rounded-3xl border border-white/10 shadow-2xl">
+      <Flame className="w-24 h-24 text-orange-500 mb-6 drop-shadow-[0_0_25px_rgba(251,140,0,0.6)] animate-pulse" />
+      <h1 className="text-6xl font-black text-white mb-4 tracking-tighter">FIRE. <span className="text-orange-500">CHOCOLATE.</span> <br/>GOOD TIMES.</h1>
+      <p className="text-neutral-400 text-lg max-w-xl mb-10">The ultimate campfire experience.</p>
+      <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
+        <button onClick={() => setView('menu')} className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-orange-900/30 transition-all">Order Now</button>
+        <button onClick={() => setView('queue')} className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white py-4 rounded-xl font-bold text-lg border border-neutral-700">Check ETA</button>
+      </div>
     </div>
   </div>
 );
+
 
 const ReviewsView = ({ API_URL, showNotification }) => {
     const [reviews, setReviews] = useState([]);
@@ -336,6 +339,8 @@ const StorefrontQueueDisplay = ({ queue, deliveryEnabled }) => {
 
 const OrderDetailsModal = ({ order, onClose }) => {
     if (!order) return null;
+    const items = order.items || order.order_items || [];
+    
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in zoom-in duration-200">
             <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto flex flex-col shadow-2xl relative">
@@ -365,7 +370,13 @@ const OrderDetailsModal = ({ order, onClose }) => {
                     <div>
                         <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-3">Order Details</h4>
                         <div className="space-y-3">
-                            {order.items?.map((item, idx) => {
+                            {(!items || items.length === 0) && (
+                                <div className="p-4 bg-red-900/20 border border-red-900/50 rounded-lg text-sm text-red-300 italic">
+                                    <p>Item details not available from backend.</p>
+                                    <p className="text-xs mt-1 text-red-400/70">Endpoint /api/admin/dashboard missing item data.</p>
+                                </div>
+                            )}
+                            {items.map((item, idx) => {
                                 const { isCustom, text } = parseCustomization(item.custom);
                                 return (
                                     <div key={idx} className="bg-neutral-950 p-3 rounded-lg border border-neutral-800">
@@ -495,17 +506,8 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
   const handleDeleteDiscount = async (id) => { if(!window.confirm("Delete?")) return; await fetch(`${API_URL}/discounts/${id}`, { method: 'DELETE' }); fetchAdminData(); };
   const toggleRecipeIngredient = (ingId) => { const currentIds = editingItem.ingredientIds || []; if (currentIds.includes(ingId)) setEditingItem({ ...editingItem, ingredientIds: currentIds.filter(id => id !== ingId) }); else setEditingItem({ ...editingItem, ingredientIds: [...currentIds, ingId] }); };
 
-  const handleViewOrder = async (order) => {
+  const handleViewOrder = (order) => {
       setViewingOrder(order);
-      try {
-          const res = await fetch(`${API_URL}/orders/${order.id}`);
-          if (res.ok) {
-              const fullData = await res.json();
-              setViewingOrder(prev => ({ ...prev, ...fullData }));
-          }
-      } catch (e) {
-          console.error("Failed to fetch full order details", e);
-      }
   };
 
   // SEPARATE VISIBLE AND HIDDEN ITEMS

@@ -10,17 +10,40 @@ This is a React frontend for the "AAASmores" ordering system.
 - **Backend:** Running separately (likely Dockerized on Unraid).
 
 ## Recent Changes (Session: Dec 13, 2025)
-1.  **Hero Section:**
+1.  **Admin Dashboard - History Tab:**
+    -   Implemented `handleViewOrder` to fetch full order details (including items) from `/api/orders/:id` when a history row is clicked.
+    -   Updated the history table `onClick` to use this new function instead of just setting the local state with partial data.
+3.  **Deployment:**
+    -   Ran `npm run build` to generate the production build.
+    -   Copied contents of `dist/` to `unraid_stuff/www/`.
+2.  **GitHub Integration:**
+    -   Repository initialized and pushed to `https://github.com/andyrob2215/AAASmores`.
+3.  **Hero Section:**
     -   Updated text to: `"FIRE. CHOCOLATE. GOOD TIMES."` with specific formatting.
-    -   Restored to the user's preferred version after a revert attempt.
-2.  **UI Fixes:**
+4.  **UI Fixes:**
     -   **Footer:** Removed `pointer-events-none` so the hidden "Staff Only" button is clickable on hover.
-3.  **Feature Logic (Customizations):**
+5.  **Feature Logic (Customizations):**
     -   Modified `AAASmores.jsx` to distinguish between "Standard" and "Custom" orders.
     -   Added helper `parseCustomization(str)`.
     -   Updated `CustomizationModal` to only prepend `"CUSTOM: "` if the ingredient counts differ from the base recipe.
     -   Updated `CartView`, `AdminDashboard`, and `OrderDetailsModal` to parse this string.
     -   **Result:** Standard items show ingredients *without* the "CUSTOM" tag; modified items show the tag.
+6.  **Assets Fix:**
+    -   Created `public/` directory.
+    -   Renamed `campfire.mp4` to `campfire_v2.mp4` in `public/`.
+    -   Updated `AAASmores.jsx`:
+        -   Referenced `/campfire_v2.mp4`.
+        -   **Video Fix:** Removed negative z-indexes from video and overlay. Wrapped text content in `relative z-10` to ensure proper stacking context and visibility.
+        -   **Modal Fix:** Added fallback text "Item details not available for this order" in `OrderDetailsModal` when item data is missing.
+7.  **Admin Dashboard Fix:**
+    -   Reverted the `fetch` call for single order details in `handleViewOrder`.
+8.  **Backend Fix:**
+    -   Modified `unraid_stuff/appdata/server.js` to update the `/api/admin/dashboard` history query.
+    -   It now aggregates `items` (JSON) similarly to the pending orders query, ensuring history items have details.
+    -   **Action Required:** User must rebuild/restart the backend service.
+9.  **Deployment:**
+    -   Ran `npm run build` to generate production build.
+    -   Copied contents of `dist/` to `unraid_stuff/www/`.
 
 ## Completed Tasks
 -   **GitHub Integration:**
@@ -29,6 +52,8 @@ This is a React frontend for the "AAASmores" ordering system.
     -   Committed all current files.
     -   Added remote `https://github.com/andyrob2215/AAASmores`.
     -   Pushed to master branch.
+-   **Admin Dashboard Enhancements:**
+    -   Fetch full order details on history click.
 
 ## Instructions for Next Session
 No specific instructions for the next session at this time.
