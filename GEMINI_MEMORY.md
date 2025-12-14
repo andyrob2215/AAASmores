@@ -52,6 +52,10 @@ This is a React frontend for the "AAASmores" ordering system.
         -   Rebuilt frontend and deployed to `unraid_stuff/www`.
         -   Pushed all changes to GitHub.
         -   **Action Required:** User must run `npm install` in backend, apply SQL migration (`staff_users`), and restart server.
+10. **Custom Background Feature:**
+    -   **Backend:** Added `/api/config/background` endpoint.
+    -   **Frontend:** Added upload UI to Admin Dashboard Settings. Updated `Hero` to use dynamic background.
+    -   **Fix:** Fixed `AdminDashboard` crash by destructuring `siteConfig` prop.
 
 ## Completed Tasks
 -   **GitHub Integration:**

@@ -791,6 +791,11 @@ const App = () => {
       } 
   }, [fetchConfig]);
 
+  // Initial Load of Config
+  useEffect(() => {
+      fetchConfig();
+  }, [fetchConfig]);
+
   useEffect(() => {
     if (view === 'menu') { fetchMenu(); fetchIngredients(); }
     if (view === 'queue' || view === 'cart') { fetchQueue(); fetchConfig(); }
