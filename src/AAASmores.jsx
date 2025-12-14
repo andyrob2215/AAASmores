@@ -439,7 +439,13 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
   const fetchAdminData = useCallback(async (showLoading = false) => {
       if (showLoading) setIsLoading(true);
       try {
-          const res = await fetch(`${API_URL}/admin/dashboard?_t=${Date.now()}`, { headers: { 'Cache-Control': 'no-store' } });
+          const res = await fetch(`${API_URL}/admin/dashboard?_t=${Date.now()}`, { 
+              headers: { 
+                  'Cache-Control': 'no-store',
+                  'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}`
+              } 
+          });
+          if (res.status === 401 || res.status === 403) { logout(); return; }
           if (!res.ok) throw new Error('Server Error');
           const data = await res.json();
           setAdminData(data);
@@ -463,23 +469,35 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
   const handleLogin = async () => {
     try {
       const res = await fetch(`${API_URL}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-      if (res.ok) { setStaffAuth(true); localStorage.setItem('aaasmores_auth', 'true'); } 
+      const data = await res.json();
+      if (res.ok && data.token) { 
+          setStaffAuth(true); 
+          localStorage.setItem('aaasmores_auth', 'true'); 
+          localStorage.setItem('aaasmores_token', data.token);
+      } 
       else { showNotification('Invalid Credentials', 'error'); }
     } catch (e) { showNotification('Login Failed', 'error'); }
   };
 
-  const logout = () => { setStaffAuth(false); localStorage.removeItem('aaasmores_auth'); setView('home'); };
+  const logout = () => { setStaffAuth(false); localStorage.removeItem('aaasmores_auth'); localStorage.removeItem('aaasmores_token'); setView('home'); };
 
   const toggleDelivery = async (newState) => {
       try {
-          await fetch(`${API_URL}/config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deliveries_enabled: newState }) });
+          await fetch(`${API_URL}/config`, { 
+              method: 'POST', 
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}`
+              }, 
+              body: JSON.stringify({ deliveries_enabled: newState }) 
+          });
           fetchAdminData();
       } catch(e) {}
   };
 
-  const updateOrderStatus = async (id, status) => { try { await fetch(`${API_URL}/orders/${id}/status`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }); fetchAdminData(); } catch (e) {} };
-  const markPickedUp = async (id) => { try { await fetch(`${API_URL}/orders/${id}/pickup`, { method: 'PUT' }); fetchAdminData(); } catch (e) {} };
-  const toggleIngredient = async (id, currentStatus) => { await fetch(`${API_URL}/ingredients/${id}/toggle`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inStock: !currentStatus }) }); fetchAdminData(); };
+  const updateOrderStatus = async (id, status) => { try { await fetch(`${API_URL}/orders/${id}/status`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` }, body: JSON.stringify({ status }) }); fetchAdminData(); } catch (e) {} };
+  const markPickedUp = async (id) => { try { await fetch(`${API_URL}/orders/${id}/pickup`, { method: 'PUT', headers: { 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` } }); fetchAdminData(); } catch (e) {} };
+  const toggleIngredient = async (id, currentStatus) => { await fetch(`${API_URL}/ingredients/${id}/toggle`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` }, body: JSON.stringify({ inStock: !currentStatus }) }); fetchAdminData(); };
   
   const handleSaveMenu = async (e) => {
     e.preventDefault();
@@ -495,15 +513,21 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
 
     const method = editingItem.id ? 'PUT' : 'POST';
     const url = editingItem.id ? `${API_URL}/menu/${editingItem.id}` : `${API_URL}/menu`;
-    await fetch(url, { method, body: formData });
+    await fetch(url, { 
+        method, 
+        body: formData,
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}`
+        }
+    });
     setEditingItem(null); setImageFile(null); fetchAdminData(); showNotification("Menu Item Saved");
   };
 
-  const handleDeleteMenu = async (id) => { if(!window.confirm("Delete?")) return; await fetch(`${API_URL}/menu/${id}`, { method: 'DELETE' }); fetchAdminData(); };
-  const handleAddIngredient = async () => { if(!newIngredient) return; await fetch(`${API_URL}/ingredients`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newIngredient }) }); setNewIngredient(''); fetchAdminData(); };
-  const handleDeleteIngredient = async (id) => { if(!window.confirm("Delete?")) return; await fetch(`${API_URL}/ingredients/${id}`, { method: 'DELETE' }); fetchAdminData(); };
-  const handleAddDiscount = async () => { if(!newDiscount.code) return; await fetch(`${API_URL}/discounts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newDiscount) }); setNewDiscount({ code: '', type: 'percent', value: '' }); fetchAdminData(); };
-  const handleDeleteDiscount = async (id) => { if(!window.confirm("Delete?")) return; await fetch(`${API_URL}/discounts/${id}`, { method: 'DELETE' }); fetchAdminData(); };
+  const handleDeleteMenu = async (id) => { if(!window.confirm("Delete?")) return; await fetch(`${API_URL}/menu/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` } }); fetchAdminData(); };
+  const handleAddIngredient = async () => { if(!newIngredient) return; await fetch(`${API_URL}/ingredients`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` }, body: JSON.stringify({ name: newIngredient }) }); setNewIngredient(''); fetchAdminData(); };
+  const handleDeleteIngredient = async (id) => { if(!window.confirm("Delete?")) return; await fetch(`${API_URL}/ingredients/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` } }); fetchAdminData(); };
+  const handleAddDiscount = async () => { if(!newDiscount.code) return; await fetch(`${API_URL}/discounts`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` }, body: JSON.stringify(newDiscount) }); setNewDiscount({ code: '', type: 'percent', value: '' }); fetchAdminData(); };
+  const handleDeleteDiscount = async (id) => { if(!window.confirm("Delete?")) return; await fetch(`${API_URL}/discounts/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` } }); fetchAdminData(); };
   const toggleRecipeIngredient = (ingId) => { const currentIds = editingItem.ingredientIds || []; if (currentIds.includes(ingId)) setEditingItem({ ...editingItem, ingredientIds: currentIds.filter(id => id !== ingId) }); else setEditingItem({ ...editingItem, ingredientIds: [...currentIds, ingId] }); };
 
   const handleViewOrder = (order) => {

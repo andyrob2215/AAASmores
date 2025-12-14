@@ -5,16 +5,22 @@ const bodyParser = require('body-parser');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+require('dotenv').config();
 
 const app = express();
 const port = 3001;
 
+// Configuration
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_change_this_in_production';
+
 const pool = new Pool({
-    user: 'admin',
-    host: '192.168.1.123',
-    database: 'AAASmores',
-    password: 'gateway2',
-    port: 5432,
+    user: process.env.DB_USER || 'admin',
+    host: process.env.DB_HOST || '192.168.1.123',
+    database: process.env.DB_NAME || 'AAASmores',
+    password: process.env.DB_PASSWORD || 'gateway2',
+    port: process.env.DB_PORT || 5432,
 });
 
 app.use(cors());
@@ -38,6 +44,20 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 app.use('/api/uploads', express.static(uploadDir));
+
+// --- AUTH MIDDLEWARE ---
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+    if (!token) return res.sendStatus(401); // Unauthorized
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403); // Forbidden
+        req.user = user;
+        next();
+    });
+};
 
 // --- HELPERS ---
 const getSalesTotal = async (interval) => {
@@ -91,7 +111,6 @@ app.get('/api/queue', async (req, res) => {
         `);
         res.json(result.rows);
     } catch (err) { 
-        // Return empty array on error to prevent frontend crash
         console.error(err);
         res.json([]); 
     }
@@ -121,7 +140,8 @@ app.get('/api/config', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/config', async (req, res) => {
+// Protected Config Route
+app.post('/api/config', authenticateToken, async (req, res) => {
     const { deliveries_enabled } = req.body;
     try {
         await pool.query("INSERT INTO site_config (config_key, config_value) VALUES ('deliveries_enabled', $1) ON CONFLICT (config_key) DO UPDATE SET config_value = $1", [String(deliveries_enabled)]);
@@ -170,14 +190,28 @@ app.post('/api/feedback', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
     try {
-        const result = await pool.query('SELECT * FROM staff_users WHERE username = $1 AND password = $2', [username, password]);
-        if (result.rows.length > 0) res.json({ success: true, user: { username: result.rows[0].username } });
-        else res.status(401).json({ error: 'Invalid credentials' });
+        const result = await pool.query('SELECT * FROM staff_users WHERE username = $1', [username]);
+        if (result.rows.length > 0) {
+            const user = result.rows[0];
+            // Compare hashed password (if it starts with $2, it's bcrypt, otherwise fallback to plaintext for migration)
+            const match = user.password.startsWith('$2') 
+                ? await bcrypt.compare(password, user.password)
+                : user.password === password;
+
+            if (match) {
+                const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
+                res.json({ success: true, token, user: { username: user.username } });
+            } else {
+                res.status(401).json({ error: 'Invalid credentials' });
+            }
+        } else {
+            res.status(401).json({ error: 'Invalid credentials' });
+        }
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- ADMIN DASHBOARD ---
-app.get('/api/admin/dashboard', async (req, res) => {
+// --- ADMIN DASHBOARD (PROTECTED) ---
+app.get('/api/admin/dashboard', authenticateToken, async (req, res) => {
     try {
         const pending = await pool.query(`
             SELECT o.*, json_agg(json_build_object('name', m.name, 'qty', oi.quantity, 'custom', oi.customization_details)) as items 
@@ -200,10 +234,7 @@ app.get('/api/admin/dashboard', async (req, res) => {
             LIMIT 50
         `);
         const ingredients = await pool.query('SELECT * FROM ingredients ORDER BY name ASC');
-        
-        // Return ALL items (even hidden ones) for Admin, but exclude deleted
         const menuItems = await pool.query('SELECT * FROM menu_items WHERE is_deleted = false ORDER BY id ASC');
-        
         const recipes = await pool.query('SELECT * FROM menu_recipes');
         const discounts = await pool.query('SELECT * FROM discount_codes ORDER BY id ASC');
         const configRes = await pool.query("SELECT config_value FROM site_config WHERE config_key = 'deliveries_enabled'");
@@ -226,22 +257,22 @@ app.get('/api/admin/dashboard', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.put('/api/orders/:id/status', async (req, res) => {
+app.put('/api/orders/:id/status', authenticateToken, async (req, res) => {
     const { status } = req.body; const { id } = req.params;
     try { await pool.query("UPDATE orders SET status = $1::text, completed_at = CASE WHEN $1::text = 'completed' THEN NOW() ELSE completed_at END WHERE id = $2", [status, id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.put('/api/orders/:id/pickup', async (req, res) => {
+app.put('/api/orders/:id/pickup', authenticateToken, async (req, res) => {
     const { id } = req.params;
     try { await pool.query("UPDATE orders SET picked_up = true WHERE id = $1", [id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.put('/api/ingredients/:id/toggle', async (req, res) => {
+app.put('/api/ingredients/:id/toggle', authenticateToken, async (req, res) => {
     try { await pool.query('UPDATE ingredients SET is_in_stock = $1 WHERE id = $2', [req.body.inStock, req.params.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- MENU MANAGEMENT ---
-app.post('/api/menu', upload.single('image'), async (req, res) => {
+// --- MENU MANAGEMENT (PROTECTED) ---
+app.post('/api/menu', authenticateToken, upload.single('image'), async (req, res) => {
     const { name, description, price, category, ingredientIds, manual_availability, is_visible } = req.body;
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
     let ingredients = [];
@@ -263,7 +294,7 @@ app.post('/api/menu', upload.single('image'), async (req, res) => {
     } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: e.message }); } finally { client.release(); }
 });
 
-app.put('/api/menu/:id', upload.single('image'), async (req, res) => {
+app.put('/api/menu/:id', authenticateToken, upload.single('image'), async (req, res) => {
     const { id } = req.params;
     const { name, description, price, category, manual_availability, is_visible, ingredientIds } = req.body;
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : undefined;
@@ -297,11 +328,11 @@ app.put('/api/menu/:id', upload.single('image'), async (req, res) => {
     } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: e.message }); } finally { client.release(); }
 });
 
-app.delete('/api/menu/:id', async (req, res) => { try { await pool.query('UPDATE menu_items SET is_deleted = true WHERE id = $1', [req.params.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); } });
+app.delete('/api/menu/:id', authenticateToken, async (req, res) => { try { await pool.query('UPDATE menu_items SET is_deleted = true WHERE id = $1', [req.params.id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); } });
 
-app.post('/api/ingredients', async (req, res) => { try { await pool.query('INSERT INTO ingredients (name) VALUES ($1)', [req.body.name]); res.json({success:true}); } catch (e) { res.status(500).json({error:e.message}); } });
-app.delete('/api/ingredients/:id', async (req, res) => { try { await pool.query('DELETE FROM ingredients WHERE id = $1', [req.params.id]); res.json({success:true}); } catch (e) { res.status(500).json({error:e.message}); } });
-app.post('/api/discounts', async (req, res) => { const { code, type, value } = req.body; try { await pool.query('INSERT INTO discount_codes (code, type, value) VALUES ($1, $2, $3)', [code.toUpperCase(), type, value]); res.json({success:true}); } catch (e) { res.status(500).json({error:e.message}); } });
-app.delete('/api/discounts/:id', async (req, res) => { try { await pool.query('DELETE FROM discount_codes WHERE id = $1', [req.params.id]); res.json({success:true}); } catch (e) { res.status(500).json({error:e.message}); } });
+app.post('/api/ingredients', authenticateToken, async (req, res) => { try { await pool.query('INSERT INTO ingredients (name) VALUES ($1)', [req.body.name]); res.json({success:true}); } catch (e) { res.status(500).json({error:e.message}); } });
+app.delete('/api/ingredients/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM ingredients WHERE id = $1', [req.params.id]); res.json({success:true}); } catch (e) { res.status(500).json({error:e.message}); } });
+app.post('/api/discounts', authenticateToken, async (req, res) => { const { code, type, value } = req.body; try { await pool.query('INSERT INTO discount_codes (code, type, value) VALUES ($1, $2, $3)', [code.toUpperCase(), type, value]); res.json({success:true}); } catch (e) { res.status(500).json({error:e.message}); } });
+app.delete('/api/discounts/:id', authenticateToken, async (req, res) => { try { await pool.query('DELETE FROM discount_codes WHERE id = $1', [req.params.id]); res.json({success:true}); } catch (e) { res.status(500).json({error:e.message}); } });
 
 app.listen(port, () => { console.log(`AAASmores Backend v6.0.2 running on port ${port}`); });

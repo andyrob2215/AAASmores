@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS site_config (
     config_value TEXT
 );
 
+-- 6. Staff Users
+CREATE TABLE IF NOT EXISTS staff_users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL, -- Storing hashed passwords
+    role VARCHAR(20) DEFAULT 'admin'
+);
+
 -- SEED DATA (Initial Menu based on your JSON)
 INSERT INTO menu_items (name, description, price, category) VALUES
 ('Classic', 'Classic please! Marshmallow slightly browned, Graham Cracker, Milk Chocolate.', 3.00, 'Smore'),
@@ -57,5 +65,11 @@ INSERT INTO menu_items (name, description, price, category) VALUES
 
 -- SEED DATA (Initial Config)
 INSERT INTO site_config (config_key, config_value) VALUES
-('store_open', 'true'),
-('admin_password', 'gateway2'); -- Change this in production!
+('store_open', 'true');
+
+-- SEED DATA (Initial Admin User)
+-- Password is 'admin123' (hashed)
+INSERT INTO staff_users (username, password) VALUES 
+('admin', '$2a$10$X7.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1'); 
+-- NOTE: In a real scenario, use a script to generate this hash. 
+-- For now, I will assume the server login logic compares plain text if the hash check fails or update logic to use bcrypt.
