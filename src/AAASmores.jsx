@@ -744,17 +744,75 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
 };
 
 // ... (Keep SuccessView and App Main same as fixed version) ...
-const SuccessView = ({ setView }) => (
-  <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4">
-    <div className="w-20 h-20 bg-green-600 rounded-full flex items-center justify-center mb-6"><CheckCircle className="w-10 h-10 text-white" /></div>
-    <h2 className="text-4xl font-bold text-white mb-4">Order Received!</h2>
-    <p className="text-neutral-400 max-w-md mb-8">We are preparing your campfire treats. Please have <strong>CASH</strong> ready upon pickup/delivery.</p>
-    <div className="flex gap-4">
-      <button onClick={() => setView('queue')} className="bg-neutral-800 text-white px-6 py-3 rounded-xl font-bold">Check Status</button>
-      <button onClick={() => setView('home')} className="text-orange-500 font-bold px-6 py-3">Return Home</button>
+const SuccessView = ({ setView, API_URL, showNotification }) => {
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [name, setName] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (rating === 0) return showNotification("Please select a star rating", "error");
+    setSubmitting(true);
+    try {
+        const res = await fetch(`${API_URL}/reviews`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name || 'Anonymous', rating, comment })
+        });
+        if (res.ok) {
+            setSubmitted(true);
+            showNotification("Review posted! Thank you.");
+        } else {
+            showNotification("Failed to post review", "error");
+        }
+    } catch (e) {
+        showNotification("Error posting review", "error");
+    } finally {
+        setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4 py-12">
+      <div className="w-20 h-20 bg-green-600 rounded-full flex items-center justify-center mb-6"><CheckCircle className="w-10 h-10 text-white" /></div>
+      <h2 className="text-4xl font-bold text-white mb-4">Order Received!</h2>
+      <p className="text-neutral-400 max-w-md mb-8">We are preparing your campfire treats. Please have <strong>CASH</strong> ready upon pickup/delivery.</p>
+      
+      {!submitted ? (
+          <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl w-full max-w-md mb-8 animate-in slide-in-from-bottom-4">
+              <h3 className="text-xl font-bold text-white mb-2">Rate your experience?</h3>
+              <p className="text-neutral-500 text-sm mb-4">Let us know what you think!</p>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="flex justify-center gap-2 mb-2">
+                      {[1, 2, 3, 4, 5].map(star => (
+                          <button key={star} type="button" onClick={() => setRating(star)} className={`p-1 transition-transform hover:scale-110 ${rating >= star ? 'text-yellow-500' : 'text-neutral-700'}`}>
+                              <Star className="w-8 h-8 fill-current" />
+                          </button>
+                      ))}
+                  </div>
+                  <input type="text" placeholder="Your Name (Optional)" value={name} onChange={e => setName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white text-sm" />
+                  <textarea placeholder="Any comments?" value={comment} onChange={e => setComment(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white text-sm h-20 resize-none" />
+                  <button disabled={submitting || rating === 0} type="submit" className="w-full bg-neutral-800 hover:bg-neutral-700 text-white font-bold py-3 rounded-lg disabled:opacity-50 transition-colors">
+                      {submitting ? 'Posting...' : 'Submit Review'}
+                  </button>
+              </form>
+          </div>
+      ) : (
+          <div className="bg-green-900/20 border border-green-500/30 p-6 rounded-2xl w-full max-w-md mb-8">
+              <p className="text-green-400 font-bold text-lg">Thank you for your review!</p>
+              <p className="text-green-300/70 text-sm">See it on the Reviews tab.</p>
+          </div>
+      )}
+
+      <div className="flex gap-4">
+        <button onClick={() => setView('queue')} className="bg-neutral-800 text-white px-6 py-3 rounded-xl font-bold">Check Status</button>
+        <button onClick={() => setView('home')} className="text-orange-500 font-bold px-6 py-3">Return Home</button>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const App = () => {
   const [view, setView] = useState(() => localStorage.getItem('aaasmores_view') || 'home'); 
@@ -837,7 +895,7 @@ const App = () => {
         {view === 'queue' && <QueueBoard queue={queue} lastUpdated={lastUpdated} />}
         {view === 'reviews' && <ReviewsView API_URL={API_URL} showNotification={showNotification} />}
         {view === 'cart' && <CartView cart={cart} updateCartQty={updateCartQty} submitOrder={submitOrder} view={view} setView={setView} API_URL={API_URL} deliveryEnabled={siteConfig.deliveries_enabled} />}
-        {view === 'success' && <SuccessView setView={setView} />}
+        {view === 'success' && <SuccessView setView={setView} API_URL={API_URL} showNotification={showNotification} />}
         {(view === 'admin-login' || view === 'admin') && 
           <AdminDashboard setView={setView} staffAuth={staffAuth} setStaffAuth={setStaffAuth} API_URL={API_URL} showNotification={showNotification} siteConfig={siteConfig} />
         }

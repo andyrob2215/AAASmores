@@ -23,6 +23,25 @@ const pool = new Pool({
     port: process.env.DB_PORT || 5432,
 });
 
+// --- DB INIT ---
+const initDb = async () => {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS reviews (
+                id SERIAL PRIMARY KEY,
+                customer_name VARCHAR(255),
+                rating INTEGER,
+                comment TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        console.log("DB: Reviews table ensured.");
+    } catch (err) {
+        console.error("DB Init Error:", err);
+    }
+};
+initDb();
+
 app.use(cors());
 app.use(bodyParser.json());
 

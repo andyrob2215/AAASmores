@@ -1,11 +1,11 @@
 
 
 -- 1. Feedback Table (Renamed from your previous request)
-CREATE TABLE IF NOT EXISTS feedback (
+CREATE TABLE reviews (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    feedback TEXT NOT NULL,
-    rating INTEGER DEFAULT 5,
+    customer_name VARCHAR(255),
+    rating INTEGER,
+    comment TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

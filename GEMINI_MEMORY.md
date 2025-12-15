@@ -56,6 +56,10 @@ This is a React frontend for the "AAASmores" ordering system.
     -   **Backend:** Added `/api/config/background` endpoint.
     -   **Frontend:** Added upload UI to Admin Dashboard Settings. Updated `Hero` to use dynamic background.
     -   **Fix:** Fixed `AdminDashboard` crash by destructuring `siteConfig` prop.
+    -   **Fix:** Load `siteConfig` on app mount.
+    -   **Style:** Reduced opacity (`bg-black/20`) and blur (`backdrop-blur-[2px]`) of the Hero text container to improve background visibility.
+3.  **Deployment:**
+    -   Rebuilt frontend, synced backend files, and pushed to GitHub.
 
 ## Completed Tasks
 -   **GitHub Integration:**
