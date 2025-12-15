@@ -253,7 +253,7 @@ const QueueBoard = ({ queue, lastUpdated }) => {
   );
 };
 
-const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, deliveryEnabled }) => {
+const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, siteConfig }) => {
   const subtotal = cart.reduce((acc, item) => acc + (item.finalPrice * item.quantity), 0);
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
@@ -261,15 +261,69 @@ const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, de
   const [customTip, setCustomTip] = useState('');
   const [deliveryType, setDeliveryType] = useState('pickup');
   const [siteNumber, setSiteNumber] = useState('');
-  const [discountCode, setDiscountCode] = useState('');
+  const [couponCodeInput, setCouponCodeInput] = useState(''); 
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('cashapp'); // Default to digital
   const [activeDiscount, setActiveDiscount] = useState(null); 
   const [discountError, setDiscountError] = useState('');
+  const [appliedCouponCode, setAppliedCouponCode] = useState(null);
+
+  const deliveryEnabled = siteConfig?.deliveries_enabled;
+  const cashUnlockCode = siteConfig?.cash_unlock_code || 'familycash';
 
   useEffect(() => { if(!deliveryEnabled) setDeliveryType('pickup'); }, [deliveryEnabled]);
 
   const getTipAmount = () => { if (customTip) return Math.max(0, parseFloat(customTip) || 0); if (tipOption === 0) return 0; return (subtotal * (tipOption / 100)); };
-  const validateDiscount = async () => { if (!discountCode) return; try { const res = await fetch(`${API_URL}/discounts/validate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: discountCode }) }); const data = await res.json(); if (data.valid) { setActiveDiscount(data.discount); setDiscountError(''); } else { setActiveDiscount(null); setDiscountError('Invalid code'); } } catch(e) { console.error(e); } };
-  const getDiscountAmount = () => { if (!activeDiscount) return 0; if (activeDiscount.type === 'percent') return subtotal * (activeDiscount.value / 100); if (activeDiscount.type === 'flat') return parseFloat(activeDiscount.value); return 0; };
+  
+  const validateCoupon = async () => {
+    if (!couponCodeInput) {
+        setActiveDiscount(null);
+        setAppliedCouponCode(null);
+        setDiscountError('');
+        return;
+    }
+
+    if (couponCodeInput.toLowerCase() === cashUnlockCode.toLowerCase()) {
+        setActiveDiscount(null);
+        setAppliedCouponCode(cashUnlockCode); // Store the ACTUAL code required by backend
+        setDiscountError('');
+        setSelectedPaymentMethod('cash');
+        showNotification("Cash payment option unlocked!", "success");
+        return;
+    }
+
+    try { 
+        const res = await fetch(`${API_URL}/discounts/validate`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ code: couponCodeInput }) 
+        }); 
+        const data = await res.json(); 
+        if (data.valid) { 
+            setActiveDiscount(data.discount); 
+            setAppliedCouponCode(couponCodeInput.toUpperCase());
+            setDiscountError(''); 
+            showNotification(`Discount "${couponCodeInput.toUpperCase()}" applied!`, "success");
+        } else { 
+            setActiveDiscount(null); 
+            setAppliedCouponCode(null);
+            setDiscountError('Invalid code'); 
+            showNotification('Invalid coupon code', "error");
+        } 
+    } catch(e) { 
+        console.error(e); 
+        setActiveDiscount(null);
+        setAppliedCouponCode(null);
+        setDiscountError('Error validating coupon');
+        showNotification('Error validating coupon', "error");
+    } 
+  };
+  
+  const getDiscountAmount = () => { 
+    if (!activeDiscount) return 0; 
+    if (activeDiscount.type === 'percent') return subtotal * (activeDiscount.value / 100); 
+    if (activeDiscount.type === 'flat') return parseFloat(activeDiscount.value); 
+    return 0; 
+  };
 
   const tipAmount = getTipAmount();
   const discountAmount = getDiscountAmount();
@@ -303,23 +357,126 @@ const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, de
           );
         })}
         <div className="mt-6 pt-4 border-t border-neutral-800 space-y-4">
-             <div className="flex gap-2"><input type="text" value={discountCode} onChange={e => setDiscountCode(e.target.value.toUpperCase())} placeholder="PROMO CODE" className="flex-1 bg-neutral-950 border border-neutral-800 rounded p-2 text-white uppercase"/><button onClick={validateDiscount} className="bg-neutral-800 px-4 rounded font-bold hover:bg-white hover:text-black">Apply</button></div>
-             {discountError && <p className="text-red-500 text-xs">{discountError}</p>}
-             {activeDiscount && <p className="text-green-500 text-xs">Applied: {activeDiscount.type === 'percent' ? `${activeDiscount.value}%` : `$${activeDiscount.value}`} OFF</p>}
-             <div><label className="text-sm text-neutral-400 mb-2 block">Driver/Cook Tip</label><div className="flex gap-2 mb-2">{[0, 15, 20, 25].map(pct => (<button key={pct} onClick={() => { setTipOption(pct); setCustomTip(''); }} className={`flex-1 py-2 rounded-lg font-bold text-sm ${tipOption === pct && !customTip ? 'bg-orange-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}>{pct === 0 ? 'None' : `${pct}%`}</button>))}</div><div className="relative"><DollarSign className="absolute left-3 top-3 w-4 h-4 text-neutral-500" /><input type="number" min="0" placeholder="Custom Amount" value={customTip} onChange={(e) => { const v = e.target.value; if(v >= 0) setCustomTip(v); setTipOption(-1); }} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg py-2 pl-9 pr-4 text-white" /></div></div>
+             {/* Coupon/Discount Code Input */}
+             <div>
+                <label className="text-sm text-neutral-400 mb-2 block">Coupon / Discount Code</label>
+                <div className="flex gap-2">
+                    <input 
+                        type="text" 
+                        value={couponCodeInput} 
+                        onChange={e => setCouponCodeInput(e.target.value.toUpperCase())} 
+                        placeholder="CODE (Required for Cash)" 
+                        className="flex-1 bg-neutral-950 border border-neutral-800 rounded p-2 text-white uppercase"
+                    />
+                    <button onClick={validateCoupon} className="bg-neutral-800 px-4 rounded font-bold hover:bg-white hover:text-black">Apply</button>
+                </div>
+                {discountError && <p className="text-red-500 text-xs mt-1">{discountError}</p>}
+                {activeDiscount && <p className="text-green-500 text-xs mt-1">Applied: {activeDiscount.type === 'percent' ? `${activeDiscount.value}%` : `$${activeDiscount.value}`} OFF</p>}
+                {appliedCouponCode === cashUnlockCode && <p className="text-green-500 text-xs mt-1">Cash payment unlocked!</p>}
+             </div>
+
+             {/* Tip Section */}
+             <div>
+                 <label className="text-sm text-neutral-400 mb-2 block">Driver/Cook Tip</label>
+                 <div className="flex gap-2 mb-2">
+                     {[0, 15, 20, 25].map(pct => (
+                         <button key={pct} onClick={() => { setTipOption(pct); setCustomTip(''); }} 
+                             className={`flex-1 py-2 rounded-lg font-bold text-sm ${tipOption === pct && !customTip ? 'bg-orange-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}>
+                             {pct === 0 ? 'None' : `${pct}%`}
+                         </button>
+                     ))}
+                 </div>
+                 <div className="relative">
+                     <DollarSign className="absolute left-3 top-3 w-4 h-4 text-neutral-500" />
+                     <input 
+                         type="number" min="0" placeholder="Custom Amount" 
+                         value={customTip} 
+                         onChange={(e) => { const v = e.target.value; if(v >= 0) setCustomTip(v); setTipOption(-1); }} 
+                         className="w-full bg-neutral-950 border border-neutral-800 rounded-lg py-2 pl-9 pr-4 text-white" 
+                     />
+                 </div>
+             </div>
         </div>
-        <div className="mt-6 flex justify-between items-end"><div className="text-neutral-400 text-sm"><div>Subtotal: ${subtotal.toFixed(2)}</div>{activeDiscount && <div className="text-green-500">Discount: -${discountAmount.toFixed(2)}</div>}<div>Tip: ${tipAmount.toFixed(2)}</div></div><div className="text-3xl font-bold text-orange-500">${finalTotal.toFixed(2)}</div></div>
+        
+        <div className="mt-6 border-t border-neutral-800 pt-4 space-y-4">
+            <h3 className="text-sm text-neutral-400 font-bold uppercase tracking-wide mb-2">Payment Method</h3>
+            <div className="grid grid-cols-2 gap-2">
+                <button 
+                    onClick={() => setSelectedPaymentMethod('cashapp')} 
+                    className={`py-3 rounded-lg font-bold flex items-center justify-center gap-2 ${selectedPaymentMethod === 'cashapp' ? 'bg-green-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}
+                >
+                    Cash App
+                </button>
+                <button 
+                    onClick={() => setSelectedPaymentMethod('venmo')} 
+                    className={`py-3 rounded-lg font-bold flex items-center justify-center gap-2 ${selectedPaymentMethod === 'venmo' ? 'bg-blue-500 text-white' : 'bg-neutral-800 text-neutral-400'}`}
+                >
+                    Venmo
+                </button>
+                <button 
+                    onClick={() => appliedCouponCode === cashUnlockCode && setSelectedPaymentMethod('cash')} 
+                    className={`py-3 rounded-lg font-bold flex items-center justify-center gap-2 col-span-2 ${selectedPaymentMethod === 'cash' ? 'bg-orange-600 text-white' : (appliedCouponCode === cashUnlockCode ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-900 text-neutral-600 cursor-not-allowed border border-neutral-800')}`}
+                >
+                    {appliedCouponCode === cashUnlockCode ? <><DollarSign className="w-4 h-4" /> Cash</> : <><Lock className="w-4 h-4" /> Cash (Requires Code)</>}
+                </button>
+            </div>
+        </div>
+
+        <div className="mt-6 flex justify-between items-end">
+            <div className="text-neutral-400 text-sm">
+                <div>Subtotal: ${subtotal.toFixed(2)}</div>
+                {activeDiscount && <div className="text-green-500">Discount: -${discountAmount.toFixed(2)}</div>}
+                <div>Tip: ${tipAmount.toFixed(2)}</div>
+            </div>
+            <div className="text-3xl font-bold text-orange-500">${finalTotal.toFixed(2)}</div>
+        </div>
       </div>
       <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-4"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your Name" className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-white" />{deliveryType === 'delivery' && (<input type="text" value={siteNumber} onChange={e => setSiteNumber(e.target.value)} placeholder="Campsite Number (Required)" className="w-full bg-neutral-900 border border-orange-500/50 rounded-xl p-4 text-white" />)}</div>
+        {selectedPaymentMethod !== 'cash' && (
+            <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl flex items-start gap-3">
+                <AlertTriangle className="w-6 h-6 text-red-500 flex-shrink-0" />
+                <div>
+                    <h4 className="font-bold text-red-500">Wait! Payment Required First.</h4>
+                    <p className="text-sm text-red-200 mt-1">Your order will <strong>NOT</strong> start cooking until we receive your payment on {selectedPaymentMethod === 'cashapp' ? 'Cash App' : 'Venmo'}. We will verify it manually.</p>
+                </div>
+            </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4">
+            <input 
+                type="text" 
+                value={name} 
+                onChange={e => setName(e.target.value)} 
+                placeholder="Your Name" 
+                className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-white" 
+            />
+            {deliveryType === 'delivery' && (
+                <input 
+                    type="text" 
+                    value={siteNumber} 
+                    onChange={e => setSiteNumber(e.target.value)} 
+                    placeholder="Campsite Number (Required)" 
+                    className="w-full bg-neutral-900 border border-orange-500/50 rounded-xl p-4 text-white" 
+                />
+            )}
+        </div>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes..." className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-white h-20" />
-        <button disabled={!name || (deliveryType === 'delivery' && !siteNumber)} onClick={() => submitOrder(name, notes, tipAmount, activeDiscount, deliveryType, siteNumber)} className="w-full bg-green-600 hover:bg-green-700 disabled:bg-neutral-800 disabled:text-neutral-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-green-900/20">Place Order (Cash ${finalTotal.toFixed(2)})</button>
-        <p className="text-center text-xs text-neutral-500">By clicking order, you agree to pay in CASH upon receipt.</p>
+        <button 
+            disabled={!name || (deliveryType === 'delivery' && !siteNumber)} 
+            onClick={() => submitOrder(name, notes, tipAmount, activeDiscount, deliveryType, siteNumber, selectedPaymentMethod, appliedCouponCode)} 
+            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-neutral-800 disabled:text-neutral-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-green-900/20"
+        >
+            {selectedPaymentMethod === 'cash' ? `Place Order (Cash $${finalTotal.toFixed(2)})` : `Place Order & Pay $${finalTotal.toFixed(2)}`}
+        </button>
+        {selectedPaymentMethod === 'cash' && (
+            <p className="text-center text-xs text-neutral-500">By clicking order, you agree to pay in CASH upon receipt.</p>
+        )}
       </div>
     </div>
   );
 };
 
+// **MOVED UP** to resolve ReferenceError
 const StorefrontQueueDisplay = ({ queue, deliveryEnabled }) => {
     const [isFullscreen, setIsFullscreen] = useState(false);
     
@@ -347,6 +504,7 @@ const StorefrontQueueDisplay = ({ queue, deliveryEnabled }) => {
     );
 };
 
+// **MOVED UP** to resolve ReferenceError
 const OrderDetailsModal = ({ order, onClose }) => {
     if (!order) return null;
     const items = order.items || order.order_items || [];
@@ -375,6 +533,7 @@ const OrderDetailsModal = ({ order, onClose }) => {
                             ) : (
                                 <div className="flex items-center gap-2 text-blue-400 mt-1"><MapPin className="w-4 h-4"/> Local Pickup</div>
                             )}
+                            <div className="flex items-center gap-2 text-neutral-400 mt-1"><DollarSign className="w-4 h-4"/> <span className="capitalize">{order.payment_method}</span> ({order.payment_status})</div>
                         </div>
                     </div>
                     <div>
@@ -434,7 +593,7 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
   const [adminTab, setAdminTab] = useState('active'); 
   
   // Data State
-  const [adminData, setAdminData] = useState({ pending: [], history: [], ingredients: [], menuItems: [], recipes: [], discounts: [], sales: {}, deliveryEnabled: true });
+  const [adminData, setAdminData] = useState({ awaitingPayment: [], pending: [], history: [], ingredients: [], menuItems: [], recipes: [], discounts: [], sales: {}, deliveryEnabled: true, cashUnlockCode: 'familycash' });
   const [lastUpdated, setLastUpdated] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -444,8 +603,11 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
   const [newDiscount, setNewDiscount] = useState({ code: '', type: 'percent', value: '' });
   const [viewingOrder, setViewingOrder] = useState(null);
   const [imageFile, setImageFile] = useState(null);
+  
+  // Config State
+  const [tempCashCode, setTempCashCode] = useState('');
 
-  // FETCH LOGIC (Moved inside component for isolation)
+  // FETCH LOGIC
   const fetchAdminData = useCallback(async (showLoading = false) => {
       if (showLoading) setIsLoading(true);
       try {
@@ -459,6 +621,7 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
           if (!res.ok) throw new Error('Server Error');
           const data = await res.json();
           setAdminData(data);
+          setTempCashCode(data.cashUnlockCode); // Sync local state
           setLastUpdated({ time: new Date().toISOString(), error: false });
       } catch (e) {
           setLastUpdated(prev => ({ ...prev, error: true, msg: e.message }));
@@ -505,8 +668,25 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
       } catch(e) {}
   };
 
+  const updateCashCode = async () => {
+      try {
+          await fetch(`${API_URL}/config`, { 
+              method: 'POST', 
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}`
+              }, 
+              body: JSON.stringify({ cash_unlock_code: tempCashCode }) 
+          });
+          showNotification('Cash Code Updated');
+          fetchAdminData();
+      } catch(e) { showNotification('Failed to update', 'error'); }
+  };
+
   const updateOrderStatus = async (id, status) => { try { await fetch(`${API_URL}/orders/${id}/status`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` }, body: JSON.stringify({ status }) }); fetchAdminData(); } catch (e) {} };
   const markPickedUp = async (id) => { try { await fetch(`${API_URL}/orders/${id}/pickup`, { method: 'PUT', headers: { 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` } }); fetchAdminData(); } catch (e) {} };
+  const handleDeleteOrder = async (id) => { if(!window.confirm("Are you sure you want to delete this order?")) return; try { await fetch(`${API_URL}/admin/orders/${id}/delete`, { method: 'PUT', headers: { 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` } }); fetchAdminData(); } catch (e) {} };
+  const handleMarkOrderPaid = async (id) => { if(!window.confirm("Mark this order as paid and move to active?")) return; try { await fetch(`${API_URL}/admin/orders/${id}/mark-paid`, { method: 'PUT', headers: { 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` } }); fetchAdminData(); } catch (e) {} };
   const toggleIngredient = async (id, currentStatus) => { await fetch(`${API_URL}/ingredients/${id}/toggle`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('aaasmores_token')}` }, body: JSON.stringify({ inStock: !currentStatus }) }); fetchAdminData(); };
   
   const handleSaveMenu = async (e) => {
@@ -552,6 +732,31 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
 
   const handleViewOrder = (order) => {
       setViewingOrder(order);
+  };
+
+  // Helper to render buttons for active orders without complex IIFEs
+  const renderActiveOrderButtons = (o) => {
+      let mainButton;
+      if (o.status === 'completed') {
+           if (o.delivery_type === 'delivery') {
+               mainButton = <button onClick={() => markPickedUp(o.id)} className="flex-1 bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-bold flex items-center justify-center gap-2"><Truck className="w-4 h-4"/> Mark Delivered</button>;
+           } else {
+               mainButton = <button onClick={() => markPickedUp(o.id)} className="flex-1 bg-green-600 hover:bg-green-700 py-3 rounded-lg font-bold flex items-center justify-center gap-2"><CheckCircle className="w-4 h-4"/> Picked Up</button>;
+           }
+      } else {
+           // Pending
+           mainButton = <button onClick={() => updateOrderStatus(o.id, 'completed')} className="flex-1 bg-orange-600 hover:bg-orange-700 py-3 rounded-lg font-bold">Mark Ready</button>;
+      }
+      
+      return (
+          <>
+              {mainButton}
+              {o.payment_status === 'unpaid' && (
+                  <button onClick={() => handleMarkOrderPaid(o.id)} className="px-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold flex items-center justify-center ml-2" title="Mark Payment Collected"><DollarSign className="w-4 h-4" /></button>
+              )}
+              <button onClick={() => updateOrderStatus(o.id, 'cancelled')} className="px-4 bg-neutral-800 hover:bg-red-900 text-neutral-400 rounded-lg ml-2">Cancel</button>
+          </>
+      );
   };
 
   // SEPARATE VISIBLE AND HIDDEN ITEMS
@@ -614,12 +819,21 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
            </button>
         ))}
       </div>
-      <div className="max-w-4xl mx-auto p-4">
+      <div className="max-w-6xl mx-auto p-4">
         {adminTab === 'settings' && (
              <div className="space-y-6">
                  <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl">
                      <h3 className="text-xl font-bold mb-4 text-white">Store Configuration</h3>
-                     <div className="flex items-center justify-between"><div><div className="text-lg font-bold text-white">Accept Deliveries</div><div className="text-sm text-neutral-400">Enable or disable delivery orders for customers.</div></div><button onClick={() => toggleDelivery(!adminData.deliveryEnabled)} className={`w-16 h-8 rounded-full p-1 transition-colors ${adminData.deliveryEnabled ? 'bg-green-600' : 'bg-neutral-700'}`}><div className={`w-6 h-6 rounded-full bg-white transform transition-transform ${adminData.deliveryEnabled ? 'translate-x-8' : 'translate-x-0'}`} /></button></div>
+                     <div className="space-y-4">
+                         <div className="flex items-center justify-between"><div><div className="text-lg font-bold text-white">Accept Deliveries</div><div className="text-sm text-neutral-400">Enable or disable delivery orders for customers.</div></div><button onClick={() => toggleDelivery(!adminData.deliveryEnabled)} className={`w-16 h-8 rounded-full p-1 transition-colors ${adminData.deliveryEnabled ? 'bg-green-600' : 'bg-neutral-700'}`}><div className={`w-6 h-6 rounded-full bg-white transform transition-transform ${adminData.deliveryEnabled ? 'translate-x-8' : 'translate-x-0'}`} /></button></div>
+                         <div className="flex items-center gap-4 pt-4 border-t border-neutral-800">
+                             <div className="flex-1">
+                                 <label className="text-sm text-neutral-400 block mb-1">Cash Unlock Code</label>
+                                 <input type="text" value={tempCashCode} onChange={e => setTempCashCode(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded p-2 text-white" />
+                             </div>
+                             <button onClick={updateCashCode} className="bg-neutral-800 hover:bg-white hover:text-black px-4 py-2 rounded mt-6 font-bold">Update</button>
+                         </div>
+                     </div>
                  </div>
                  <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl">
                      <h3 className="text-xl font-bold mb-4 text-white">Home Background</h3>
@@ -631,28 +845,57 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
              </div>
         )}
         {adminTab === 'active' && (
-          <div className="space-y-4">
-            {adminData.pending.map(o => (
-              <div key={o.id} className={`border p-6 rounded-xl relative animate-in fade-in ${o.status === 'completed' ? 'bg-green-900/10 border-green-500/50' : 'bg-neutral-900 border-neutral-800'}`}>
-                <div className="flex justify-between items-start mb-4">
-                  <div><h3 className="text-2xl font-bold">{o.customer_name}</h3><div className="flex gap-2 mt-1">{o.delivery_type === 'delivery' ? <span className="bg-orange-900/50 text-orange-200 px-2 py-0.5 rounded text-xs border border-orange-500/30 flex items-center gap-1"><Truck className="w-3 h-3"/> Site {o.delivery_location}</span> : <span className="bg-blue-900/50 text-blue-200 px-2 py-0.5 rounded text-xs border border-blue-500/30">Pickup</span>}<span className="text-neutral-500 text-sm">{formatTime(o.created_at)}</span></div>{o.notes && <p className="text-orange-400 mt-2 text-sm italic">"{o.notes}"</p>}</div>
-                  <div className="text-right">{o.status === 'completed' ? <span className="bg-green-500 text-white px-2 py-1 rounded text-xs font-bold uppercase">Ready</span> : <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold uppercase">Cooking</span>}<div className="font-bold text-neutral-300 text-xl mt-1">${parseFloat(o.total_price).toFixed(2)}</div></div>
-                </div>
-                <div className="bg-neutral-950 p-4 rounded-lg mb-4 space-y-2">
-                  {o.items?.map((i, idx) => {
-                    const { isCustom, text } = parseCustomization(i.custom);
-                    return (
-                      <div key={idx} className="text-sm border-b border-neutral-800/50 pb-2 last:border-0 mb-2 last:mb-0">
-                        <div className="flex justify-between text-neutral-300 font-medium"><span>{i.qty}x {isCustom && <span className="text-orange-500 font-bold text-xs mr-1">CUSTOM</span>}<span className="text-white font-bold">{i.name}</span></span></div>
-                        {text && <div className="text-xs text-orange-500/80 pl-4 mt-0.5 italic flex items-start gap-1"><Edit className="w-3 h-3 mt-0.5 flex-shrink-0"/> {text}</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="flex gap-2">{o.status === 'completed' ? (o.delivery_type === 'delivery' ? (<button onClick={() => markPickedUp(o.id)} className="flex-1 bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-bold flex items-center justify-center gap-2"><Truck className="w-4 h-4"/> Mark Delivered</button>) : (<button onClick={() => markPickedUp(o.id)} className="flex-1 bg-green-600 hover:bg-green-700 py-3 rounded-lg font-bold flex items-center justify-center gap-2"><CheckCircle className="w-4 h-4"/> Picked Up</button>)) : (<button onClick={() => updateOrderStatus(o.id, 'completed')} className="flex-1 bg-orange-600 hover:bg-orange-700 py-3 rounded-lg font-bold">Mark Ready</button>)}<button onClick={() => updateOrderStatus(o.id, 'cancelled')} className="px-4 bg-neutral-800 hover:bg-red-900 text-neutral-400 rounded-lg">Cancel</button></div>
-              </div>
-            ))}
-            {adminData.pending.length === 0 && !isLoading && <p className="text-center text-neutral-500 py-10">No active orders.</p>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Unpaid / Awaiting Payment Column */}
+            <div className="space-y-4">
+                <h3 className="text-lg font-bold text-red-400 uppercase tracking-widest flex items-center gap-2 mb-4"><AlertTriangle className="w-5 h-5"/> Unpaid / Review</h3>
+                {adminData.awaitingPayment?.map(o => (
+                    <div key={o.id} className="bg-red-900/10 border border-red-500/30 p-6 rounded-xl animate-in fade-in">
+                        <div className="flex justify-between items-start mb-4">
+                            <div><h3 className="text-xl font-bold text-white">{o.customer_name}</h3><div className="flex gap-2 mt-1"><span className="bg-red-500/20 text-red-200 px-2 py-0.5 rounded text-xs border border-red-500/30 capitalize flex items-center gap-1"><DollarSign className="w-3 h-3"/> {o.payment_method}</span></div></div>
+                            <div className="text-right font-bold text-xl">${parseFloat(o.total_price).toFixed(2)}</div>
+                        </div>
+                        <div className="bg-neutral-950/50 p-3 rounded-lg mb-4 text-sm text-neutral-300">
+                            {o.items?.map((i, idx) => (
+                                <div key={idx}>{i.qty}x {i.name} {i.custom && <span className="text-xs text-orange-400">({parseCustomization(i.custom).text})</span>}</div>
+                            ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => handleMarkOrderPaid(o.id)} className="flex-1 bg-green-600 hover:bg-green-700 py-3 rounded-lg font-bold flex items-center justify-center gap-2 text-sm"><CheckCircle className="w-4 h-4"/> Paid</button>
+                            <button onClick={() => handleDeleteOrder(o.id)} className="px-4 bg-neutral-800 hover:bg-red-900 text-neutral-400 rounded-lg text-sm">Delete</button>
+                        </div>
+                    </div>
+                ))}
+                {(!adminData.awaitingPayment || adminData.awaitingPayment.length === 0) && <p className="text-center text-neutral-600 italic">No unpaid orders.</p>}
+            </div>
+
+            {/* Active / Cooking Column */}
+            <div className="space-y-4">
+                <h3 className="text-lg font-bold text-orange-400 uppercase tracking-widest flex items-center gap-2 mb-4"><Flame className="w-5 h-5"/> Active / Cooking</h3>
+                {adminData.pending?.map(o => (
+                    <div key={o.id} className={`border p-6 rounded-xl relative animate-in fade-in ${o.status === 'completed' ? 'bg-green-900/10 border-green-500/50' : 'bg-neutral-900 border-neutral-800'}`}>
+                        <div className="flex justify-between items-start mb-4">
+                            <div><h3 className="text-2xl font-bold">{o.customer_name}</h3><div className="flex gap-2 mt-1">{o.delivery_type === 'delivery' ? <span className="bg-orange-900/50 text-orange-200 px-2 py-0.5 rounded text-xs border border-orange-500/30 flex items-center gap-1"><Truck className="w-3 h-3"/> Site {o.delivery_location}</span> : <span className="bg-blue-900/50 text-blue-200 px-2 py-0.5 rounded text-xs border border-blue-500/30">Pickup</span>}<span className="bg-neutral-900/50 text-neutral-300 px-2 py-0.5 rounded text-xs border border-neutral-500/30 capitalize">{o.payment_method} ({o.payment_status})</span><span className="text-neutral-500 text-sm">{formatTime(o.created_at)}</span></div>{o.notes && <p className="text-orange-400 mt-2 text-sm italic">"{o.notes}"</p>}</div>
+                            <div className="text-right">{o.status === 'completed' ? <span className="bg-green-500 text-white px-2 py-1 rounded text-xs font-bold uppercase">Ready</span> : <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold uppercase">Cooking</span>}<div className="font-bold text-neutral-300 text-xl mt-1">${parseFloat(o.total_price).toFixed(2)}</div></div>
+                        </div>
+                        <div className="bg-neutral-950 p-4 rounded-lg mb-4 space-y-2">
+                            {o.items?.map((i, idx) => {
+                                const { isCustom, text } = parseCustomization(i.custom);
+                                return (
+                                    <div key={idx} className="text-sm border-b border-neutral-800/50 pb-2 last:border-0 mb-2 last:mb-0">
+                                        <div className="flex justify-between text-neutral-300 font-medium"><span>{i.qty}x {isCustom && <span className="text-orange-500 font-bold text-xs mr-1">CUSTOM</span>}<span className="text-white font-bold">{i.name}</span></span></div>
+                                        {text && <div className="text-xs text-orange-500/80 pl-4 mt-0.5 italic flex items-start gap-1"><Edit className="w-3 h-3 mt-0.5 flex-shrink-0"/> {text}</div>}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div className="flex gap-2">
+                            {renderActiveOrderButtons(o)}
+                        </div>
+                    </div>
+                ))}
+                {(!adminData.pending || adminData.pending.length === 0) && !isLoading && <p className="text-center text-neutral-500 py-10">No active orders.</p>}
+            </div>
           </div>
         )}
         {adminTab === 'inventory' && (
@@ -865,7 +1108,7 @@ const App = () => {
       if (view === 'cart') fetchConfig(); 
   }, 5000);
 
-  const submitOrder = async (name, notes, tip, discount, deliveryType, deliveryLocation) => {
+  const submitOrder = async (name, notes, tip, discount, deliveryType, deliveryLocation, paymentMethod, couponCode) => {
     const subtotal = cart.reduce((acc, item) => acc + (item.finalPrice * item.quantity), 0);
     let discountAmount = 0;
     if(discount) { if(discount.type === 'percent') discountAmount = subtotal * (discount.value / 100); else discountAmount = parseFloat(discount.value); }
@@ -874,7 +1117,7 @@ const App = () => {
       const res = await fetch(`${API_URL}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerName: name, items: cart, total: Math.max(0, subtotal - discountAmount + tip), notes, tip, discountCodeId: discount ? discount.id : null, discountAmount, deliveryType, deliveryLocation })
+        body: JSON.stringify({ customerName: name, items: cart, total: Math.max(0, subtotal - discountAmount + tip), notes, tip, discountCodeId: discount ? discount.id : null, discountAmount, deliveryType, deliveryLocation, paymentMethod, couponCode })
       });
       if (res.ok) { setCart([]); setView('success'); localStorage.removeItem('aaasmores_cart'); }
     } catch (e) { showNotification("Failed to order", "error"); }
@@ -894,7 +1137,7 @@ const App = () => {
         {view === 'menu' && <MenuGrid menuItems={menuItems} openCustomizer={setCustomizingItem} />}
         {view === 'queue' && <QueueBoard queue={queue} lastUpdated={lastUpdated} />}
         {view === 'reviews' && <ReviewsView API_URL={API_URL} showNotification={showNotification} />}
-        {view === 'cart' && <CartView cart={cart} updateCartQty={updateCartQty} submitOrder={submitOrder} view={view} setView={setView} API_URL={API_URL} deliveryEnabled={siteConfig.deliveries_enabled} />}
+        {view === 'cart' && <CartView cart={cart} updateCartQty={updateCartQty} submitOrder={submitOrder} view={view} setView={setView} API_URL={API_URL} siteConfig={siteConfig} />}
         {view === 'success' && <SuccessView setView={setView} API_URL={API_URL} showNotification={showNotification} />}
         {(view === 'admin-login' || view === 'admin') && 
           <AdminDashboard setView={setView} staffAuth={staffAuth} setStaffAuth={setStaffAuth} API_URL={API_URL} showNotification={showNotification} siteConfig={siteConfig} />

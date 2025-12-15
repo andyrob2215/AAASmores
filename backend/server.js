@@ -161,10 +161,12 @@ app.get('/api/config', async (req, res) => {
         
         // Defaults
         if (config.deliveries_enabled === undefined) config.deliveries_enabled = 'true';
+        if (config.cash_unlock_code === undefined) config.cash_unlock_code = 'familycash';
         
         // Parse booleans
         const response = {
             deliveries_enabled: config.deliveries_enabled === 'true',
+            cash_unlock_code: config.cash_unlock_code,
             hero_background_url: config.hero_background_url || null,
             hero_background_type: config.hero_background_type || null
         };
@@ -174,9 +176,14 @@ app.get('/api/config', async (req, res) => {
 
 // Protected Config Route
 app.post('/api/config', authenticateToken, async (req, res) => {
-    const { deliveries_enabled } = req.body;
+    const { deliveries_enabled, cash_unlock_code } = req.body;
     try {
-        await pool.query("INSERT INTO site_config (config_key, config_value) VALUES ('deliveries_enabled', $1) ON CONFLICT (config_key) DO UPDATE SET config_value = $1", [String(deliveries_enabled)]);
+        if (deliveries_enabled !== undefined) {
+            await pool.query("INSERT INTO site_config (config_key, config_value) VALUES ('deliveries_enabled', $1) ON CONFLICT (config_key) DO UPDATE SET config_value = $1", [String(deliveries_enabled)]);
+        }
+        if (cash_unlock_code !== undefined) {
+            await pool.query("INSERT INTO site_config (config_key, config_value) VALUES ('cash_unlock_code', $1) ON CONFLICT (config_key) DO UPDATE SET config_value = $1", [String(cash_unlock_code)]);
+        }
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -212,13 +219,60 @@ app.post('/api/discounts/validate', async (req, res) => {
 });
 
 app.post('/api/orders', async (req, res) => {
-    const { customerName, items, total, notes, tip, discountCodeId, discountAmount, deliveryType, deliveryLocation } = req.body;
+    console.log('Incoming order:', req.body);
+    const { customerName, items, total, notes, tip, discountCodeId, discountAmount, deliveryType, deliveryLocation, paymentMethod, couponCode } = req.body;
+
+    let orderPaymentStatus = 'unpaid'; // Default to unpaid
+    let orderStatus = 'pending'; // Default to pending (active/cooking)
+    
+    let appliedDiscountCodeId = discountCodeId; 
+    let calculatedDiscountAmount = discountAmount;
+    let validatedCouponCode = null;
+
+    // Fetch config for cash unlock code
+    const configRes = await pool.query("SELECT config_value FROM site_config WHERE config_key = 'cash_unlock_code'");
+    const cashUnlockCode = configRes.rows.length > 0 ? configRes.rows[0].config_value : 'familycash';
+
+    if (couponCode) {
+        if (couponCode.toLowerCase() === cashUnlockCode.toLowerCase()) {
+            // Cash Unlock Code Logic
+            validatedCouponCode = cashUnlockCode;
+        } else {
+            // Check for other discount codes
+            const discountRes = await pool.query("SELECT * FROM discount_codes WHERE code = $1 AND is_active = true", [couponCode.toUpperCase()]);
+            if (discountRes.rows.length > 0) {
+                const discount = discountRes.rows[0];
+                appliedDiscountCodeId = discount.id;
+                validatedCouponCode = couponCode.toUpperCase();
+                // Recalculate discount amount on backend
+                if (discount.type === 'percent') {
+                    calculatedDiscountAmount = total * (discount.value / 100);
+                } else if (discount.type === 'flat') {
+                    calculatedDiscountAmount = discount.value;
+                }
+            } else {
+                return res.status(400).json({ error: 'Invalid coupon code provided.' });
+            }
+        }
+    }
+
+    // Payment Method Logic
+    if (paymentMethod === 'cashapp' || paymentMethod === 'venmo') {
+        orderStatus = 'awaiting_payment';
+    } else if (paymentMethod === 'cash') {
+        if (validatedCouponCode !== cashUnlockCode) {
+             return res.status(403).json({ error: 'Cash payment not authorized without valid code.' });
+        }
+        // Cash orders go to pending (active) immediately, but marked as unpaid (pay on pickup/delivery)
+        orderStatus = 'pending';
+    }
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         const orderRes = await client.query(
-            'INSERT INTO orders (customer_name, total_price, notes, tip_amount, discount_code_id, discount_amount, delivery_type, delivery_location) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-            [customerName, total, notes, tip || 0, discountCodeId || null, discountAmount || 0, deliveryType, deliveryLocation]
+            'INSERT INTO orders (customer_name, total_price, notes, tip_amount, discount_code_id, discount_amount, delivery_type, delivery_location, payment_method, coupon_code, payment_status, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id',
+            [customerName, total, notes, tip || 0, appliedDiscountCodeId || null, calculatedDiscountAmount || 0, deliveryType, deliveryLocation, paymentMethod || 'cash', validatedCouponCode || null, orderPaymentStatus, orderStatus]
         );
         const orderId = orderRes.rows[0].id;
         for (const item of items) {
@@ -266,6 +320,15 @@ app.post('/api/auth/login', async (req, res) => {
 // --- ADMIN DASHBOARD (PROTECTED) ---
 app.get('/api/admin/dashboard', authenticateToken, async (req, res) => {
     try {
+        const awaitingPayment = await pool.query(`
+            SELECT o.*, json_agg(json_build_object('name', m.name, 'qty', oi.quantity, 'custom', oi.customization_details)) as items 
+            FROM orders o 
+            JOIN order_items oi ON o.id = oi.order_id 
+            JOIN menu_items m ON oi.menu_item_id = m.id 
+            WHERE o.status = 'awaiting_payment'
+            GROUP BY o.id ORDER BY o.created_at ASC
+        `);
+
         const pending = await pool.query(`
             SELECT o.*, json_agg(json_build_object('name', m.name, 'qty', oi.quantity, 'custom', oi.customization_details)) as items 
             FROM orders o 
@@ -290,14 +353,19 @@ app.get('/api/admin/dashboard', authenticateToken, async (req, res) => {
         const menuItems = await pool.query('SELECT * FROM menu_items WHERE is_deleted = false ORDER BY id ASC');
         const recipes = await pool.query('SELECT * FROM menu_recipes');
         const discounts = await pool.query('SELECT * FROM discount_codes ORDER BY id ASC');
-        const configRes = await pool.query("SELECT config_value FROM site_config WHERE config_key = 'deliveries_enabled'");
-        const deliveryEnabled = configRes.rows.length > 0 ? configRes.rows[0].config_value === 'true' : true;
+        const configRes = await pool.query("SELECT * FROM site_config");
+        const config = configRes.rows.reduce((acc, row) => { acc[row.config_key] = row.config_value; return acc; }, {});
+        
+        const deliveryEnabled = config.deliveries_enabled === 'true';
+        const cashUnlockCode = config.cash_unlock_code || 'familycash';
+
         const salesToday = await getSalesTotal('1 DAY');
         const salesWeek = await getSalesTotal('1 WEEK');
         const salesMonth = await getSalesTotal('1 MONTH');
         const salesAllTime = await pool.query("SELECT SUM(total_price) as total FROM orders WHERE status = 'completed'");
 
         res.json({
+            awaitingPayment: awaitingPayment.rows,
             pending: pending.rows,
             history: history.rows,
             ingredients: ingredients.rows,
@@ -305,6 +373,7 @@ app.get('/api/admin/dashboard', authenticateToken, async (req, res) => {
             recipes: recipes.rows,
             discounts: discounts.rows,
             deliveryEnabled,
+            cashUnlockCode,
             sales: { today: salesToday, week: salesWeek, month: salesMonth, total: salesAllTime.rows[0].total || 0 }
         });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -318,6 +387,23 @@ app.put('/api/orders/:id/status', authenticateToken, async (req, res) => {
 app.put('/api/orders/:id/pickup', authenticateToken, async (req, res) => {
     const { id } = req.params;
     try { await pool.query("UPDATE orders SET picked_up = true WHERE id = $1", [id]); res.json({ success: true }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/admin/orders/:id/delete', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query("UPDATE orders SET status = 'cancelled' WHERE id = $1", [id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/admin/orders/:id/mark-paid', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Only move to 'pending' if it was 'awaiting_payment'. Otherwise preserve status (e.g. 'completed').
+        await pool.query("UPDATE orders SET payment_status = 'paid', status = CASE WHEN status = 'awaiting_payment' THEN 'pending' ELSE status END WHERE id = $1", [id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.put('/api/ingredients/:id/toggle', authenticateToken, async (req, res) => {
