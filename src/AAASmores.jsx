@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ShoppingCart, Flame, Lock, X, Plus, Minus, Clock, MapPin, Truck, Utensils, RefreshCw, CheckCircle, DollarSign, Tag, Trash2, Edit, Save, WifiOff, AlertTriangle, ArrowLeft, Eye, Receipt, Monitor, Maximize2, Minimize2, Star, Settings, AlertCircle, Image as ImageIcon, EyeOff } from 'lucide-react';
+import { ShoppingCart, Flame, Lock, X, Plus, Minus, Clock, MapPin, Truck, Utensils, RefreshCw, CheckCircle, DollarSign, Tag, Trash2, Edit, Save, WifiOff, AlertTriangle, ArrowLeft, Eye, Receipt, Monitor, Maximize2, Minimize2, Star, Settings, AlertCircle, Image as ImageIcon, EyeOff, CreditCard, Search, Phone, Navigation } from 'lucide-react';
 
 const USE_LIVE_API = true;
 const API_URL = '/api'; 
@@ -25,6 +25,23 @@ const parseCustomization = (str) => {
     return { isCustom, text };
 };
 
+const formatPhoneNumber = (val) => {
+    if (!val) return '';
+    const clean = val.replace(/\D/g, '');
+    const match = clean.match(/^(\d{0,3})(\d{0,3})(\d{0,4})$/);
+    if (match) {
+        if (!match[2]) return match[1] ? `(${match[1]}` : '';
+        if (!match[3]) return `(${match[1]}) ${match[2]}`;
+        return `(${match[1]}) ${match[2]}-${match[3]}`;
+    }
+    return clean;
+};
+
+const getRandomFlare = () => {
+    const msgs = ["Roasting perfection...", "Sticky goodness incoming!", "Any second now!", "Chocolate is melting...", "Almost s'more time!"];
+    return msgs[Math.floor(Math.random() * msgs.length)];
+};
+
 // Robust Interval Hook
 function useInterval(callback, delay) {
   const savedCallback = useRef();
@@ -48,6 +65,7 @@ const Navbar = ({ view, setView, cart }) => (
       </div>
       <div className="flex gap-4 items-center">
         <button onClick={() => setView('queue')} className={`text-sm md:text-base font-medium hover:text-orange-400 ${view === 'queue' ? 'text-orange-500' : ''}`}>Queue</button>
+        <button onClick={() => setView('pay')} className={`text-sm md:text-base font-medium hover:text-orange-400 ${view === 'pay' ? 'text-orange-500' : ''}`}>Pay</button>
         <button onClick={() => setView('menu')} className={`text-sm md:text-base font-medium hover:text-orange-400 ${view === 'menu' ? 'text-orange-500' : ''}`}>Menu</button>
         <button onClick={() => setView('reviews')} className={`text-sm md:text-base font-medium hover:text-orange-400 ${view === 'reviews' ? 'text-orange-500' : ''}`}>Reviews</button>
         <button onClick={() => setView('cart')} className="relative bg-orange-600 hover:bg-orange-700 p-2 rounded-lg">
@@ -231,29 +249,145 @@ const MenuGrid = ({ menuItems, openCustomizer }) => (
   </div>
 );
 
+// --- DYNAMIC QUEUE CALCULATOR ---
+const calculateWaitTime = (order, index, activeOrders) => {
+    const headOrder = activeOrders[0];
+    const headElapsedMs = new Date() - new Date(headOrder.created_at);
+    const headElapsedMins = headElapsedMs / 60000;
+    const headRemaining = Math.max(0, 4 - headElapsedMins);
+    
+    const myWait = (index * 4) + headRemaining;
+    
+    return {
+        minutes: Math.ceil(myWait),
+        isReadyNow: myWait <= 0.5,
+        msg: myWait <= 0.5 ? getRandomFlare() : `~${Math.ceil(myWait)} min`
+    };
+};
+
 const QueueBoard = ({ queue, lastUpdated }) => {
-  const myEta = (index) => (index + 1) * 4;
-  const validQueue = Array.isArray(queue) ? queue : [];
+  const activeOrders = Array.isArray(queue) ? queue.filter(q => q.status === 'pending') : [];
+  const readyOrders = Array.isArray(queue) ? queue.filter(q => q.status === 'completed' && !q.picked_up) : [];
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-12">
-      <div className="text-center mb-10"><Clock className="w-16 h-16 text-orange-500 mx-auto mb-4" /><h2 className="text-4xl font-bold text-white mb-2">Order Queue</h2><p className="text-neutral-400">Current wait time: ~4 minutes per order.</p></div>
-      {validQueue.length === 0 ? <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-12 text-center text-neutral-500"><p className="text-xl">The fire is quiet. No pending orders.</p></div> : 
-        <div className="grid gap-4">{validQueue.map((q, idx) => (
-            <div key={q.id} className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl flex items-center justify-between animate-in slide-in-from-bottom-2">
-              <div className="flex items-center gap-4"><div className="bg-neutral-800 w-10 h-10 rounded-full flex items-center justify-center text-neutral-400 font-bold">#{idx + 1}</div><div><h3 className="text-2xl font-bold text-white">{q.customer_name}</h3><p className="text-xs text-neutral-500">Ordered at {formatTime(q.created_at)}</p></div></div>
-              <div className="text-right">
-                  {q.status === 'completed' ? <div className="text-green-500 font-bold text-xl uppercase">Ready</div> : <><div className="text-orange-500 font-bold text-xl">~{myEta(idx)} min</div><div className="text-xs text-neutral-500 uppercase tracking-wider">Estimated Wait</div></>}
-              </div>
-            </div>
-        ))}</div>
-      }
+      <div className="text-center mb-10"><Clock className="w-16 h-16 text-orange-500 mx-auto mb-4" /><h2 className="text-4xl font-bold text-white mb-2">Order Queue</h2><p className="text-neutral-400">Track your treat.</p></div>
+      
+      {activeOrders.length === 0 && readyOrders.length === 0 && <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-12 text-center text-neutral-500"><p className="text-xl">The fire is quiet. No pending orders.</p></div>}
+      
+      <div className="grid gap-4">
+          {readyOrders.map(q => (
+             <div key={q.id} className="bg-green-900/20 border border-green-500/30 p-6 rounded-xl flex items-center justify-between animate-in slide-in-from-bottom-2">
+                <div className="flex items-center gap-4"><div className="bg-green-600/20 p-2 rounded-full"><CheckCircle className="w-6 h-6 text-green-500"/></div><div><h3 className="text-2xl font-bold text-white">{q.customer_name}</h3><p className="text-xs text-green-400">Ready for pickup!</p></div></div>
+                <div className="text-right text-green-500 font-bold text-xl uppercase">READY</div>
+             </div>
+          ))}
+
+          {activeOrders.map((q, idx) => {
+              const eta = calculateWaitTime(q, idx, activeOrders);
+              return (
+                <div key={q.id} className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl flex items-center justify-between animate-in slide-in-from-bottom-2">
+                  <div className="flex items-center gap-4"><div className="bg-neutral-800 w-10 h-10 rounded-full flex items-center justify-center text-neutral-400 font-bold">#{idx + 1}</div><div><h3 className="text-2xl font-bold text-white">{q.customer_name}</h3><p className="text-xs text-neutral-500">Ordered at {formatTime(q.created_at)}</p></div></div>
+                  <div className="text-right">
+                      <div className="text-orange-500 font-bold text-xl">{eta.msg}</div>
+                      <div className="text-xs text-neutral-500 uppercase tracking-wider">Estimated Wait</div>
+                  </div>
+                </div>
+              );
+          })}
+      </div>
       <div className="text-center mt-8 text-neutral-600 text-xs">Live Updates Active • Last Sync: {lastUpdated ? formatTime(lastUpdated.time, true) : 'Syncing...'}</div>
     </div>
   );
 };
 
-const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, siteConfig }) => {
+const PayView = ({ API_URL, siteConfig, showNotification }) => {
+    const [orders, setOrders] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedOrder, setSelectedOrder] = useState(null);
+    const [unlockCode, setUnlockCode] = useState('');
+
+    const fetchUnpaid = useCallback(async () => {
+        setLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/unpaid`);
+            if (res.ok) setOrders(await res.json());
+        } catch (e) { console.error(e); }
+        finally { setLoading(false); }
+    }, [API_URL]);
+
+    useEffect(() => { fetchUnpaid(); }, [fetchUnpaid]);
+
+    const handleUpdatePayment = async (orderId, method) => {
+        try {
+            if (method === 'cash') {
+                if (unlockCode.toLowerCase() !== (siteConfig.cash_unlock_code || 'familycash').toLowerCase()) {
+                    showNotification('Invalid Cash Unlock Code', 'error');
+                    return;
+                }
+            }
+
+            const res = await fetch(`${API_URL}/orders/${orderId}/payment-method`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paymentMethod: method })
+            });
+            
+            if (res.ok) {
+                showNotification('Payment method updated. Please complete payment.');
+                fetchUnpaid(); 
+                if (method === 'cash') setSelectedOrder(null);
+            }
+        } catch (e) { showNotification('Error updating payment', 'error'); }
+    };
+
+    const getPaymentLink = (method, total) => {
+        switch(method) {
+            case 'venmo': return `https://venmo.com/aaasmores?txn=pay&amount=${total}&note=Order`;
+            case 'cashapp': return `https://cash.app/$aaasmores/${total}`;
+            case 'paypal': return `https://paypal.me/aaasmores/${total}`;
+            default: return null;
+        }
+    };
+
+    return (
+        <div className="max-w-4xl mx-auto px-4 py-12">
+            <h2 className="text-3xl font-bold text-white mb-8 text-center">Pay for Orders</h2>
+            {loading ? <div className="text-center text-neutral-500">Loading...</div> : (
+                <div className="grid gap-6">
+                    {orders.length === 0 && <div className="text-center text-neutral-500">No unpaid orders found.</div>}
+                    {orders.map(order => (
+                        <div key={order.id} className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl">
+                            <div className="flex justify-between items-center mb-4">
+                                <div><h3 className="text-xl font-bold text-white">{order.customer_name}</h3><p className="text-sm text-neutral-400">Total: ${parseFloat(order.total_price).toFixed(2)} • Current Method: <span className="capitalize text-orange-400">{order.payment_method}</span></p></div>
+                                <button onClick={() => setSelectedOrder(selectedOrder === order.id ? null : order.id)} className="bg-neutral-800 px-4 py-2 rounded-lg text-white hover:bg-neutral-700">Pay Now</button>
+                            </div>
+                            
+                            {selectedOrder === order.id && (
+                                <div className="mt-4 pt-4 border-t border-neutral-800 animate-in fade-in slide-in-from-top-2">
+                                    <p className="text-sm text-neutral-400 mb-3">Select payment method to complete:</p>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {['venmo', 'cashapp', 'paypal'].map(method => (
+                                            <a key={method} href={getPaymentLink(method, order.total_price)} target="_blank" rel="noreferrer" onClick={() => handleUpdatePayment(order.id, method)} className={`block text-center py-3 rounded-lg font-bold text-white ${method === 'venmo' ? 'bg-blue-500' : (method === 'cashapp' ? 'bg-green-600' : 'bg-indigo-600')}`}>
+                                                {method.charAt(0).toUpperCase() + method.slice(1)}
+                                            </a>
+                                        ))}
+                                        <div className="col-span-2 flex gap-2">
+                                            <input type="text" placeholder="Cash Code" value={unlockCode} onChange={e => setUnlockCode(e.target.value)} className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white" />
+                                            <button onClick={() => handleUpdatePayment(order.id, 'cash')} className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-6 rounded-lg">Pay Cash</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, siteConfig, showNotification }) => {
   const subtotal = cart.reduce((acc, item) => acc + (item.finalPrice * item.quantity), 0);
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
@@ -261,11 +395,14 @@ const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, si
   const [customTip, setCustomTip] = useState('');
   const [deliveryType, setDeliveryType] = useState('pickup');
   const [siteNumber, setSiteNumber] = useState('');
-  const [couponCodeInput, setCouponCodeInput] = useState(''); 
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('cashapp'); // Default to digital
+  const [codeInput, setCodeInput] = useState(''); 
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('cashapp');
   const [activeDiscount, setActiveDiscount] = useState(null); 
-  const [discountError, setDiscountError] = useState('');
-  const [appliedCouponCode, setAppliedCouponCode] = useState(null);
+  const [isCashUnlocked, setIsCashUnlocked] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [gpsCoords, setGpsCoords] = useState(null);
+  const [loadingGps, setLoadingGps] = useState(false);
 
   const deliveryEnabled = siteConfig?.deliveries_enabled;
   const cashUnlockCode = siteConfig?.cash_unlock_code || 'familycash';
@@ -274,20 +411,15 @@ const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, si
 
   const getTipAmount = () => { if (customTip) return Math.max(0, parseFloat(customTip) || 0); if (tipOption === 0) return 0; return (subtotal * (tipOption / 100)); };
   
-  const validateCoupon = async () => {
-    if (!couponCodeInput) {
-        setActiveDiscount(null);
-        setAppliedCouponCode(null);
-        setDiscountError('');
-        return;
-    }
+  const handleApplyCode = async () => {
+    if (!codeInput) return;
+    setErrorMsg('');
 
-    if (couponCodeInput.toLowerCase() === cashUnlockCode.toLowerCase()) {
-        setActiveDiscount(null);
-        setAppliedCouponCode(cashUnlockCode); // Store the ACTUAL code required by backend
-        setDiscountError('');
+    if (codeInput.toLowerCase() === cashUnlockCode.toLowerCase()) {
+        setIsCashUnlocked(true);
         setSelectedPaymentMethod('cash');
-        showNotification("Cash payment option unlocked!", "success");
+        showNotification("Cash payment unlocked!", "success");
+        setCodeInput('');
         return;
     }
 
@@ -295,29 +427,47 @@ const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, si
         const res = await fetch(`${API_URL}/discounts/validate`, { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({ code: couponCodeInput }) 
+            body: JSON.stringify({ code: codeInput }) 
         }); 
         const data = await res.json(); 
         if (data.valid) { 
             setActiveDiscount(data.discount); 
-            setAppliedCouponCode(couponCodeInput.toUpperCase());
-            setDiscountError(''); 
-            showNotification(`Discount "${couponCodeInput.toUpperCase()}" applied!`, "success");
+            showNotification(`Discount "${data.discount.code}" applied!`, "success");
+            setCodeInput('');
         } else { 
-            setActiveDiscount(null); 
-            setAppliedCouponCode(null);
-            setDiscountError('Invalid code'); 
-            showNotification('Invalid coupon code', "error");
+            setErrorMsg('Invalid code'); 
         } 
-    } catch(e) { 
-        console.error(e); 
-        setActiveDiscount(null);
-        setAppliedCouponCode(null);
-        setDiscountError('Error validating coupon');
-        showNotification('Error validating coupon', "error");
-    } 
+    } catch(e) { setErrorMsg('Error validating code'); }
   };
   
+  const handlePhoneChange = (e) => {
+      const formatted = formatPhoneNumber(e.target.value);
+      if (formatted.length <= 14) setPhoneNumber(formatted); 
+  };
+
+  const handleGetLocation = () => {
+      setLoadingGps(true);
+      if (!navigator.geolocation) {
+          showNotification("Geolocation not supported", "error");
+          setLoadingGps(false);
+          return;
+      }
+      navigator.geolocation.getCurrentPosition(
+          (pos) => {
+              setGpsCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+              showNotification("Location acquired!", "success");
+              setLoadingGps(false);
+          },
+          (err) => {
+              showNotification("Failed to get location. Ensure GPS is on.", "error");
+              setLoadingGps(false);
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+  };
+
+  const isPhoneValid = phoneNumber.replace(/\D/g, '').length === 10;
+
   const getDiscountAmount = () => { 
     if (!activeDiscount) return 0; 
     if (activeDiscount.type === 'percent') return subtotal * (activeDiscount.value / 100); 
@@ -328,6 +478,15 @@ const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, si
   const tipAmount = getTipAmount();
   const discountAmount = getDiscountAmount();
   const finalTotal = Math.max(0, subtotal - discountAmount + tipAmount);
+
+  const handleSubmit = () => {
+      const unlockCode = selectedPaymentMethod === 'cash' ? cashUnlockCode : null;
+      const couponCode = activeDiscount ? activeDiscount.code : null;
+      submitOrder(
+          name, notes, tipAmount, activeDiscount, deliveryType, siteNumber, selectedPaymentMethod, couponCode, unlockCode, phoneNumber, 
+          gpsCoords ? gpsCoords.lat : null, gpsCoords ? gpsCoords.lng : null
+      );
+  };
 
   if(cart.length === 0) return <div className="text-center py-20 text-neutral-500"><ShoppingCart className="w-12 h-12 mx-auto mb-4 opacity-50"/><p>Cart empty.</p></div>;
 
@@ -357,67 +516,32 @@ const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, si
           );
         })}
         <div className="mt-6 pt-4 border-t border-neutral-800 space-y-4">
-             {/* Coupon/Discount Code Input */}
              <div>
-                <label className="text-sm text-neutral-400 mb-2 block">Coupon / Discount Code</label>
+                <label className="text-sm text-neutral-400 mb-2 block">Codes (Discount or Cash Unlock)</label>
                 <div className="flex gap-2">
-                    <input 
-                        type="text" 
-                        value={couponCodeInput} 
-                        onChange={e => setCouponCodeInput(e.target.value.toUpperCase())} 
-                        placeholder="CODE (Required for Cash)" 
-                        className="flex-1 bg-neutral-950 border border-neutral-800 rounded p-2 text-white uppercase"
-                    />
-                    <button onClick={validateCoupon} className="bg-neutral-800 px-4 rounded font-bold hover:bg-white hover:text-black">Apply</button>
+                    <input type="text" value={codeInput} onChange={e => setCodeInput(e.target.value.toUpperCase())} placeholder="Enter Code" className="flex-1 bg-neutral-950 border border-neutral-800 rounded p-2 text-white uppercase" />
+                    <button onClick={handleApplyCode} className="bg-neutral-800 px-4 rounded font-bold hover:bg-white hover:text-black">Apply</button>
                 </div>
-                {discountError && <p className="text-red-500 text-xs mt-1">{discountError}</p>}
-                {activeDiscount && <p className="text-green-500 text-xs mt-1">Applied: {activeDiscount.type === 'percent' ? `${activeDiscount.value}%` : `$${activeDiscount.value}`} OFF</p>}
-                {appliedCouponCode === cashUnlockCode && <p className="text-green-500 text-xs mt-1">Cash payment unlocked!</p>}
+                {errorMsg && <p className="text-red-500 text-xs mt-1">{errorMsg}</p>}
+                {activeDiscount && <p className="text-green-500 text-xs mt-1">Discount Applied: {activeDiscount.type === 'percent' ? `${activeDiscount.value}%` : `$${activeDiscount.value}`} OFF</p>}
+                {isCashUnlocked && <p className="text-green-500 text-xs mt-1">Cash Payment Unlocked</p>}
              </div>
 
-             {/* Tip Section */}
              <div>
                  <label className="text-sm text-neutral-400 mb-2 block">Driver/Cook Tip</label>
-                 <div className="flex gap-2 mb-2">
-                     {[0, 15, 20, 25].map(pct => (
-                         <button key={pct} onClick={() => { setTipOption(pct); setCustomTip(''); }} 
-                             className={`flex-1 py-2 rounded-lg font-bold text-sm ${tipOption === pct && !customTip ? 'bg-orange-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}>
-                             {pct === 0 ? 'None' : `${pct}%`}
-                         </button>
-                     ))}
-                 </div>
-                 <div className="relative">
-                     <DollarSign className="absolute left-3 top-3 w-4 h-4 text-neutral-500" />
-                     <input 
-                         type="number" min="0" placeholder="Custom Amount" 
-                         value={customTip} 
-                         onChange={(e) => { const v = e.target.value; if(v >= 0) setCustomTip(v); setTipOption(-1); }} 
-                         className="w-full bg-neutral-950 border border-neutral-800 rounded-lg py-2 pl-9 pr-4 text-white" 
-                     />
-                 </div>
+                 <div className="flex gap-2 mb-2">{[0, 15, 20, 25].map(pct => (<button key={pct} onClick={() => { setTipOption(pct); setCustomTip(''); }} className={`flex-1 py-2 rounded-lg font-bold text-sm ${tipOption === pct && !customTip ? 'bg-orange-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}>{pct === 0 ? 'None' : `${pct}%`}</button>))}</div>
+                 <div className="relative"><DollarSign className="absolute left-3 top-3 w-4 h-4 text-neutral-500" /><input type="number" min="0" placeholder="Custom Amount" value={customTip} onChange={(e) => { const v = e.target.value; if(v >= 0) setCustomTip(v); setTipOption(-1); }} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg py-2 pl-9 pr-4 text-white" /></div>
              </div>
         </div>
         
         <div className="mt-6 border-t border-neutral-800 pt-4 space-y-4">
             <h3 className="text-sm text-neutral-400 font-bold uppercase tracking-wide mb-2">Payment Method</h3>
             <div className="grid grid-cols-2 gap-2">
-                <button 
-                    onClick={() => setSelectedPaymentMethod('cashapp')} 
-                    className={`py-3 rounded-lg font-bold flex items-center justify-center gap-2 ${selectedPaymentMethod === 'cashapp' ? 'bg-green-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}
-                >
-                    Cash App
-                </button>
-                <button 
-                    onClick={() => setSelectedPaymentMethod('venmo')} 
-                    className={`py-3 rounded-lg font-bold flex items-center justify-center gap-2 ${selectedPaymentMethod === 'venmo' ? 'bg-blue-500 text-white' : 'bg-neutral-800 text-neutral-400'}`}
-                >
-                    Venmo
-                </button>
-                <button 
-                    onClick={() => appliedCouponCode === cashUnlockCode && setSelectedPaymentMethod('cash')} 
-                    className={`py-3 rounded-lg font-bold flex items-center justify-center gap-2 col-span-2 ${selectedPaymentMethod === 'cash' ? 'bg-orange-600 text-white' : (appliedCouponCode === cashUnlockCode ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-900 text-neutral-600 cursor-not-allowed border border-neutral-800')}`}
-                >
-                    {appliedCouponCode === cashUnlockCode ? <><DollarSign className="w-4 h-4" /> Cash</> : <><Lock className="w-4 h-4" /> Cash (Requires Code)</>}
+                <button onClick={() => setSelectedPaymentMethod('cashapp')} className={`py-3 rounded-lg font-bold flex items-center justify-center gap-2 ${selectedPaymentMethod === 'cashapp' ? 'bg-green-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}>Cash App</button>
+                <button onClick={() => setSelectedPaymentMethod('venmo')} className={`py-3 rounded-lg font-bold flex items-center justify-center gap-2 ${selectedPaymentMethod === 'venmo' ? 'bg-blue-500 text-white' : 'bg-neutral-800 text-neutral-400'}`}>Venmo</button>
+                <button onClick={() => setSelectedPaymentMethod('paypal')} className={`py-3 rounded-lg font-bold flex items-center justify-center gap-2 col-span-2 ${selectedPaymentMethod === 'paypal' ? 'bg-indigo-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}>PayPal</button>
+                <button onClick={() => isCashUnlocked && setSelectedPaymentMethod('cash')} className={`py-3 rounded-lg font-bold flex items-center justify-center gap-2 col-span-2 ${selectedPaymentMethod === 'cash' ? 'bg-orange-600 text-white' : (isCashUnlocked ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-900 text-neutral-600 cursor-not-allowed border border-neutral-800')}`}>
+                    {isCashUnlocked ? <><DollarSign className="w-4 h-4" /> Cash</> : <><Lock className="w-4 h-4" /> Cash (Requires Code)</>}
                 </button>
             </div>
         </div>
@@ -437,49 +561,44 @@ const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, si
                 <AlertTriangle className="w-6 h-6 text-red-500 flex-shrink-0" />
                 <div>
                     <h4 className="font-bold text-red-500">Wait! Payment Required First.</h4>
-                    <p className="text-sm text-red-200 mt-1">Your order will <strong>NOT</strong> start cooking until we receive your payment on {selectedPaymentMethod === 'cashapp' ? 'Cash App' : 'Venmo'}. We will verify it manually.</p>
+                    <p className="text-sm text-red-200 mt-1">Your order will <strong>NOT</strong> start cooking until we receive your payment. We will verify it manually.</p>
                 </div>
             </div>
         )}
 
         <div className="grid grid-cols-1 gap-4">
-            <input 
-                type="text" 
-                value={name} 
-                onChange={e => setName(e.target.value)} 
-                placeholder="Your Name" 
-                className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-white" 
-            />
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your Name" className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-white" />
             {deliveryType === 'delivery' && (
-                <input 
-                    type="text" 
-                    value={siteNumber} 
-                    onChange={e => setSiteNumber(e.target.value)} 
-                    placeholder="Campsite Number (Required)" 
-                    className="w-full bg-neutral-900 border border-orange-500/50 rounded-xl p-4 text-white" 
-                />
+                <div className="space-y-4">
+                    <div className="flex gap-2">
+                        <div className="flex-1">
+                            <input type="text" value={siteNumber} onChange={e => { setSiteNumber(e.target.value); setGpsCoords(null); }} placeholder="Campsite Number" className="w-full bg-neutral-900 border border-orange-500/50 rounded-xl p-4 text-white" disabled={!!gpsCoords} />
+                        </div>
+                        <div className="flex items-center text-neutral-500 text-sm">OR</div>
+                        <button onClick={handleGetLocation} className={`flex-1 flex items-center justify-center gap-2 rounded-xl font-bold ${gpsCoords ? 'bg-green-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'}`}>
+                            {loadingGps ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
+                            {gpsCoords ? 'Location Set' : 'Use Current GPS'}
+                        </button>
+                    </div>
+                    {gpsCoords && <div className="text-xs text-green-500 text-center">Precise location captured. Drivers will be guided to your pin.</div>}
+                    <input type="tel" value={phoneNumber} onChange={handlePhoneChange} placeholder="Phone Number (Required)" className="w-full bg-neutral-900 border border-orange-500/50 rounded-xl p-4 text-white" />
+                </div>
             )}
         </div>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes..." className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-white h-20" />
-        <button 
-            disabled={!name || (deliveryType === 'delivery' && !siteNumber)} 
-            onClick={() => submitOrder(name, notes, tipAmount, activeDiscount, deliveryType, siteNumber, selectedPaymentMethod, appliedCouponCode)} 
-            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-neutral-800 disabled:text-neutral-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-green-900/20"
-        >
+        <button disabled={!name || (deliveryType === 'delivery' && ((!siteNumber && !gpsCoords) || !isPhoneValid))} onClick={handleSubmit} className="w-full bg-green-600 hover:bg-green-700 disabled:bg-neutral-800 disabled:text-neutral-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-green-900/20">
             {selectedPaymentMethod === 'cash' ? `Place Order (Cash $${finalTotal.toFixed(2)})` : `Place Order & Pay $${finalTotal.toFixed(2)}`}
         </button>
-        {selectedPaymentMethod === 'cash' && (
-            <p className="text-center text-xs text-neutral-500">By clicking order, you agree to pay in CASH upon receipt.</p>
-        )}
       </div>
     </div>
   );
 };
 
-// **MOVED UP** to resolve ReferenceError
+// **MOVED UP**
 const StorefrontQueueDisplay = ({ queue, deliveryEnabled }) => {
     const [isFullscreen, setIsFullscreen] = useState(false);
     
+    // Sort logic handled in backend typically but ensure for ETA calc
     const pendingOrders = Array.isArray(queue) ? queue.filter(o => o.status === 'pending') : [];
     const readyPickupOrders = Array.isArray(queue) ? queue.filter(o => o.status === 'completed' && !o.picked_up && o.delivery_type !== 'delivery') : [];
     const outForDeliveryOrders = Array.isArray(queue) ? queue.filter(o => o.status === 'completed' && !o.picked_up && o.delivery_type === 'delivery') : [];
@@ -496,7 +615,12 @@ const StorefrontQueueDisplay = ({ queue, deliveryEnabled }) => {
                 <button onClick={toggleFullscreen} className="text-neutral-500 hover:text-white transition-colors">{isFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}</button>
             </div>
             <div className={`flex-1 grid gap-8 p-8 min-h-0 ${deliveryEnabled ? 'grid-cols-5' : 'grid-cols-2'}`}>
-                <div className={`${deliveryEnabled ? 'col-span-2' : 'col-span-1'} flex flex-col bg-neutral-900/30 border border-orange-500/20 rounded-3xl p-6 relative overflow-hidden backdrop-blur-sm min-h-0`}><div className="absolute top-0 right-0 w-64 h-64 bg-orange-600/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none"></div><h2 className="text-3xl font-bold mb-6 flex items-center gap-3 text-orange-400 border-b border-orange-500/20 pb-4"><Flame className="w-8 h-8 animate-bounce" /> In The Fire</h2><div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">{pendingOrders.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-neutral-500 opacity-50"><Clock className="w-16 h-16 mb-4" /><p className="text-2xl font-light">Waiting for orders...</p></div> : pendingOrders.map((q, idx) => (<div key={q.id} className="bg-neutral-800/80 border border-neutral-700 p-5 rounded-2xl flex items-center justify-between shadow-lg transform transition-all hover:scale-[1.02] hover:border-orange-500/50"><div className="flex items-center gap-5"><div className="bg-orange-600 w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold shadow-md">#{idx + 1}</div><div><h3 className="text-3xl font-bold">{q.customer_name}</h3><p className="text-neutral-400 text-sm mt-1">Ordered at {formatTime(q.created_at)}</p></div></div><div className="text-right"><div className="text-2xl font-bold text-orange-400">~{(idx + 1) * 4} min</div><div className="text-xs uppercase tracking-wider text-neutral-500">Wait Time</div></div></div>))}</div></div>
+                <div className={`${deliveryEnabled ? 'col-span-2' : 'col-span-1'} flex flex-col bg-neutral-900/30 border border-orange-500/20 rounded-3xl p-6 relative overflow-hidden backdrop-blur-sm min-h-0`}><div className="absolute top-0 right-0 w-64 h-64 bg-orange-600/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none"></div><h2 className="text-3xl font-bold mb-6 flex items-center gap-3 text-orange-400 border-b border-orange-500/20 pb-4"><Flame className="w-8 h-8 animate-bounce" /> In The Fire</h2><div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">{pendingOrders.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-neutral-500 opacity-50"><Clock className="w-16 h-16 mb-4" /><p className="text-2xl font-light">Waiting for orders...</p></div> : pendingOrders.map((q, idx) => {
+                    const eta = calculateWaitTime(q, idx, pendingOrders);
+                    return (
+                        <div key={q.id} className="bg-neutral-800/80 border border-neutral-700 p-5 rounded-2xl flex items-center justify-between shadow-lg transform transition-all hover:scale-[1.02] hover:border-orange-500/50"><div className="flex items-center gap-5"><div className="bg-orange-600 w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold shadow-md">#{idx + 1}</div><div><h3 className="text-3xl font-bold">{q.customer_name}</h3><p className="text-neutral-400 text-sm mt-1">Ordered at {formatTime(q.created_at)}</p></div></div><div className="text-right"><div className="text-2xl font-bold text-orange-400">{eta.msg}</div><div className="text-xs uppercase tracking-wider text-neutral-500">Wait Time</div></div></div>
+                    );
+                })}</div></div>
                 <div className={`${deliveryEnabled ? 'col-span-2' : 'col-span-1'} flex flex-col bg-neutral-900/30 border border-green-500/20 rounded-3xl p-6 relative overflow-hidden backdrop-blur-sm min-h-0`}><div className="absolute top-0 right-0 w-64 h-64 bg-green-600/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none"></div><h2 className="text-3xl font-bold mb-6 flex items-center gap-3 text-green-400 border-b border-green-500/20 pb-4"><CheckCircle className="w-8 h-8" /> Ready for Pickup</h2><div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">{readyPickupOrders.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-neutral-500 opacity-50"><p className="text-xl">All clear!</p></div> : readyPickupOrders.map((h) => (<div key={h.id} className="bg-green-900/20 border border-green-500/30 p-5 rounded-2xl flex items-center justify-between"><div><h3 className="text-3xl font-bold text-white">{h.customer_name}</h3><p className="text-green-300/70 text-sm mt-1">Ready for pickup</p></div><div className="bg-green-500/20 p-2 rounded-full"><CheckCircle className="w-8 h-8 text-green-500" /></div></div>))}</div></div>
                 {deliveryEnabled && (<div className="col-span-1 flex flex-col bg-neutral-900/30 border border-blue-500/20 rounded-3xl p-4 relative overflow-hidden backdrop-blur-sm min-h-0"><div className="absolute top-0 right-0 w-48 h-48 bg-blue-600/10 rounded-full blur-3xl -mr-24 -mt-24 pointer-events-none"></div><h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-400 border-b border-blue-500/20 pb-3"><Truck className="w-6 h-6" /> Deliveries</h2><div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">{outForDeliveryOrders.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-neutral-500 opacity-50"><p className="text-sm">No deliveries.</p></div> : outForDeliveryOrders.map((h) => (<div key={h.id} className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-xl"><h3 className="text-lg font-bold text-white truncate">{h.customer_name}</h3><div className="flex items-center gap-2 text-blue-300 text-sm mt-1"><MapPin className="w-3 h-3" /> Site {h.delivery_location}</div></div>))}</div></div>)}
             </div>
@@ -504,7 +628,7 @@ const StorefrontQueueDisplay = ({ queue, deliveryEnabled }) => {
     );
 };
 
-// **MOVED UP** to resolve ReferenceError
+// **MOVED UP**
 const OrderDetailsModal = ({ order, onClose }) => {
     if (!order) return null;
     const items = order.items || order.order_items || [];
@@ -534,6 +658,14 @@ const OrderDetailsModal = ({ order, onClose }) => {
                                 <div className="flex items-center gap-2 text-blue-400 mt-1"><MapPin className="w-4 h-4"/> Local Pickup</div>
                             )}
                             <div className="flex items-center gap-2 text-neutral-400 mt-1"><DollarSign className="w-4 h-4"/> <span className="capitalize">{order.payment_method}</span> ({order.payment_status})</div>
+                            {order.delivery_type === 'delivery' && order.phone_number && (
+                                <div className="flex items-center gap-2 text-neutral-400 mt-1"><Phone className="w-4 h-4"/> {order.phone_number}</div>
+                            )}
+                            {order.gps_lat && order.gps_lng && (
+                                <a href={`https://www.google.com/maps/search/?api=1&query=${order.gps_lat},${order.gps_lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-green-500 mt-2 hover:underline">
+                                    <MapPin className="w-4 h-4" /> Open Exact Location
+                                </a>
+                            )}
                         </div>
                     </div>
                     <div>
@@ -586,7 +718,7 @@ const OrderDetailsModal = ({ order, onClose }) => {
     );
 };
 
-// --- ADMIN DASHBOARD (Self-Contained Fetching) ---
+// --- ADMIN DASHBOARD ---
 const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, setView, siteConfig }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -875,7 +1007,10 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
                 {adminData.pending?.map(o => (
                     <div key={o.id} className={`border p-6 rounded-xl relative animate-in fade-in ${o.status === 'completed' ? 'bg-green-900/10 border-green-500/50' : 'bg-neutral-900 border-neutral-800'}`}>
                         <div className="flex justify-between items-start mb-4">
-                            <div><h3 className="text-2xl font-bold">{o.customer_name}</h3><div className="flex gap-2 mt-1">{o.delivery_type === 'delivery' ? <span className="bg-orange-900/50 text-orange-200 px-2 py-0.5 rounded text-xs border border-orange-500/30 flex items-center gap-1"><Truck className="w-3 h-3"/> Site {o.delivery_location}</span> : <span className="bg-blue-900/50 text-blue-200 px-2 py-0.5 rounded text-xs border border-blue-500/30">Pickup</span>}<span className="bg-neutral-900/50 text-neutral-300 px-2 py-0.5 rounded text-xs border border-neutral-500/30 capitalize">{o.payment_method} ({o.payment_status})</span><span className="text-neutral-500 text-sm">{formatTime(o.created_at)}</span></div>{o.notes && <p className="text-orange-400 mt-2 text-sm italic">"{o.notes}"</p>}</div>
+                            <div><h3 className="text-2xl font-bold">{o.customer_name}</h3><div className="flex gap-2 mt-1">{o.delivery_type === 'delivery' ? <span className="bg-orange-900/50 text-orange-200 px-2 py-0.5 rounded text-xs border border-orange-500/30 flex items-center gap-1"><Truck className="w-3 h-3"/> Site {o.delivery_location}</span> : <span className="bg-blue-900/50 text-blue-200 px-2 py-0.5 rounded text-xs border border-blue-500/30">Pickup</span>}<span className="bg-neutral-900/50 text-neutral-300 px-2 py-0.5 rounded text-xs border border-neutral-500/30 capitalize">{o.payment_method} ({o.payment_status})</span><span className="text-neutral-500 text-sm">{formatTime(o.created_at)}</span></div>{o.notes && <p className="text-orange-400 mt-2 text-sm italic">"{o.notes}"</p>}
+                            {o.delivery_type === 'delivery' && o.phone_number && <div className="text-xs text-neutral-500 mt-1 flex items-center gap-1"><Phone className="w-3 h-3"/> {o.phone_number}</div>}
+                            {o.gps_lat && o.gps_lng && <a href={`https://www.google.com/maps/search/?api=1&query=${o.gps_lat},${o.gps_lng}`} target="_blank" rel="noreferrer" className="text-xs text-green-500 mt-1 flex items-center gap-1 hover:underline"><MapPin className="w-3 h-3"/> Open GPS Location</a>}
+                            </div>
                             <div className="text-right">{o.status === 'completed' ? <span className="bg-green-500 text-white px-2 py-1 rounded text-xs font-bold uppercase">Ready</span> : <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold uppercase">Cooking</span>}<div className="font-bold text-neutral-300 text-xl mt-1">${parseFloat(o.total_price).toFixed(2)}</div></div>
                         </div>
                         <div className="bg-neutral-950 p-4 rounded-lg mb-4 space-y-2">
@@ -972,9 +1107,6 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
             )}
           </div>
         )}
-        {adminTab === 'discounts' && (
-            <div className="space-y-6"><div className="flex gap-2 bg-neutral-900 p-4 rounded-xl border border-neutral-800"><div className="flex-1"><label className="text-xs text-neutral-500 block mb-1">Code</label><input type="text" placeholder="SUMMER2025" value={newDiscount.code} onChange={e => setNewDiscount({...newDiscount, code: e.target.value.toUpperCase()})} className="w-full bg-neutral-950 border border-neutral-800 rounded p-2 uppercase" /></div><div className="w-24"><label className="text-xs text-neutral-500 block mb-1">Type</label><select value={newDiscount.type} onChange={e => setNewDiscount({...newDiscount, type: e.target.value})} className="w-full bg-neutral-950 border border-neutral-800 rounded p-2"><option value="percent">% Off</option><option value="flat">$ Off</option></select></div><div className="w-24"><label className="text-xs text-neutral-500 block mb-1">Value</label><input type="number" placeholder="10" value={newDiscount.value} onChange={e => setNewDiscount({...newDiscount, value: e.target.value})} className="w-full bg-neutral-950 border border-neutral-800 rounded p-2" /></div><button onClick={handleAddDiscount} className="bg-green-600 hover:bg-green-700 px-4 rounded font-bold mt-5">Create</button></div><div className="grid gap-3">{adminData.discounts?.map(d => (<div key={d.id} className="bg-neutral-900 border border-neutral-800 p-4 rounded-lg flex justify-between items-center"><div className="flex items-center gap-3"><div className="bg-neutral-800 p-2 rounded"><Tag className="w-5 h-5 text-orange-500" /></div><div><div className="font-bold text-lg">{d.code}</div><div className="text-neutral-500 text-sm">{d.type === 'percent' ? `${d.value}% Off` : `$${parseFloat(d.value).toFixed(2)} Off`}</div></div></div><button onClick={() => handleDeleteDiscount(d.id)} className="text-neutral-500 hover:text-red-500"><Trash2 className="w-5 h-5" /></button></div>))}</div></div>
-        )}
         {adminTab === 'history' && (
           <div className="space-y-4"><div className="overflow-x-auto rounded-xl border border-neutral-800"><table className="w-full text-left text-sm text-neutral-400"><thead className="bg-neutral-900 uppercase text-xs font-bold text-neutral-500"><tr><th className="px-6 py-4">ID</th><th className="px-6 py-4">Date</th><th className="px-6 py-4">Time</th><th className="px-6 py-4">Customer</th><th className="px-6 py-4 text-right">Total</th></tr></thead><tbody className="divide-y divide-neutral-800 bg-neutral-900/50">{adminData.history.map(h => (<tr key={h.id} onClick={() => handleViewOrder(h)} className="hover:bg-neutral-800 cursor-pointer transition-colors"><td className="px-6 py-4 font-mono text-orange-500">#{h.id}</td><td className="px-6 py-4">{formatDate(h.created_at)}</td><td className="px-6 py-4">{formatTime(h.created_at)}</td><td className="px-6 py-4 font-bold text-white">{h.customer_name}</td><td className="px-6 py-4 text-right text-white">${parseFloat(h.total_price).toFixed(2)}</td></tr>))}</tbody></table></div></div>
         )}
@@ -987,12 +1119,26 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
 };
 
 // ... (Keep SuccessView and App Main same as fixed version) ...
-const SuccessView = ({ setView, API_URL, showNotification }) => {
+const SuccessView = ({ setView, API_URL, showNotification, order }) => {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [name, setName] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Helper to generate payment links
+  const getPaymentLink = (method, total) => {
+      switch(method) {
+          case 'venmo': return `https://venmo.com/aaasmores`;
+          case 'cashapp': return `https://cash.app/$aaasmores/${total}`;
+          case 'paypal': return `https://paypal.me/aaasmores/${total}`;
+          default: return null;
+      }
+  };
+
+  // We need the order details to show the payment link.
+  const paymentMethod = localStorage.getItem('last_payment_method');
+  const lastTotal = localStorage.getItem('last_order_total');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1017,12 +1163,29 @@ const SuccessView = ({ setView, API_URL, showNotification }) => {
     }
   };
 
+  const isElectronic = paymentMethod === 'venmo' || paymentMethod === 'cashapp' || paymentMethod === 'paypal';
+
   return (
     <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4 py-12">
       <div className="w-20 h-20 bg-green-600 rounded-full flex items-center justify-center mb-6"><CheckCircle className="w-10 h-10 text-white" /></div>
       <h2 className="text-4xl font-bold text-white mb-4">Order Received!</h2>
-      <p className="text-neutral-400 max-w-md mb-8">We are preparing your campfire treats. Please have <strong>CASH</strong> ready upon pickup/delivery.</p>
+      <p className="text-neutral-400 max-w-md mb-8">
+          {isElectronic ? 
+            "We have received your order. Please complete payment below to start the fire!" : 
+            "We are preparing your campfire treats. Please have CASH ready upon pickup/delivery."}
+      </p>
       
+      {/* Payment Buttons for Electronic Methods */}
+      {isElectronic && (
+          <div className="mb-8 w-full max-w-md">
+              <h3 className="text-xl font-bold text-white mb-4">Complete Payment</h3>
+              <a href={getPaymentLink(paymentMethod, lastTotal)} target="_blank" rel="noreferrer" className={`block w-full py-4 rounded-xl font-bold text-lg text-white mb-3 ${paymentMethod === 'venmo' ? 'bg-blue-500' : (paymentMethod === 'cashapp' ? 'bg-green-600' : 'bg-indigo-600')}`}>
+                  Pay on {paymentMethod === 'venmo' ? 'Venmo' : (paymentMethod === 'cashapp' ? 'Cash App' : 'PayPal')}
+              </a>
+              <p className="text-xs text-neutral-500">Clicking will open the app/website. Please enter ${lastTotal}.</p>
+          </div>
+      )}
+
       {!submitted ? (
           <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl w-full max-w-md mb-8 animate-in slide-in-from-bottom-4">
               <h3 className="text-xl font-bold text-white mb-2">Rate your experience?</h3>
@@ -1108,16 +1271,20 @@ const App = () => {
       if (view === 'cart') fetchConfig(); 
   }, 5000);
 
-  const submitOrder = async (name, notes, tip, discount, deliveryType, deliveryLocation, paymentMethod, couponCode) => {
+  const submitOrder = async (name, notes, tip, discount, deliveryType, deliveryLocation, paymentMethod, couponCode, unlockCode, phoneNumber, gpsLat, gpsLng) => {
     const subtotal = cart.reduce((acc, item) => acc + (item.finalPrice * item.quantity), 0);
     let discountAmount = 0;
     if(discount) { if(discount.type === 'percent') discountAmount = subtotal * (discount.value / 100); else discountAmount = parseFloat(discount.value); }
     
+    // Store payment info for SuccessView
+    localStorage.setItem('last_payment_method', paymentMethod);
+    localStorage.setItem('last_order_total', Math.max(0, subtotal - discountAmount + tip).toFixed(2));
+
     try {
       const res = await fetch(`${API_URL}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerName: name, items: cart, total: Math.max(0, subtotal - discountAmount + tip), notes, tip, discountCodeId: discount ? discount.id : null, discountAmount, deliveryType, deliveryLocation, paymentMethod, couponCode })
+        body: JSON.stringify({ customerName: name, items: cart, total: Math.max(0, subtotal - discountAmount + tip), notes, tip, discountCodeId: discount ? discount.id : null, discountAmount, deliveryType, deliveryLocation, paymentMethod, couponCode, unlockCode, phoneNumber, gpsLat, gpsLng })
       });
       if (res.ok) { setCart([]); setView('success'); localStorage.removeItem('aaasmores_cart'); }
     } catch (e) { showNotification("Failed to order", "error"); }
@@ -1136,8 +1303,9 @@ const App = () => {
         {view === 'home' && <Hero setView={setView} siteConfig={siteConfig} />}
         {view === 'menu' && <MenuGrid menuItems={menuItems} openCustomizer={setCustomizingItem} />}
         {view === 'queue' && <QueueBoard queue={queue} lastUpdated={lastUpdated} />}
+        {view === 'pay' && <PayView API_URL={API_URL} siteConfig={siteConfig} showNotification={showNotification} />}
         {view === 'reviews' && <ReviewsView API_URL={API_URL} showNotification={showNotification} />}
-        {view === 'cart' && <CartView cart={cart} updateCartQty={updateCartQty} submitOrder={submitOrder} view={view} setView={setView} API_URL={API_URL} siteConfig={siteConfig} />}
+        {view === 'cart' && <CartView cart={cart} updateCartQty={updateCartQty} submitOrder={submitOrder} view={view} setView={setView} API_URL={API_URL} siteConfig={siteConfig} showNotification={showNotification} />}
         {view === 'success' && <SuccessView setView={setView} API_URL={API_URL} showNotification={showNotification} />}
         {(view === 'admin-login' || view === 'admin') && 
           <AdminDashboard setView={setView} staffAuth={staffAuth} setStaffAuth={setStaffAuth} API_URL={API_URL} showNotification={showNotification} siteConfig={siteConfig} />

@@ -218,12 +218,40 @@ app.post('/api/discounts/validate', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/unpaid', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT * FROM orders 
+            WHERE status = 'awaiting_payment'
+            ORDER BY created_at DESC
+        `);
+        res.json(result.rows);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/orders/:id/payment-method', async (req, res) => {
+    const { id } = req.params;
+    const { paymentMethod } = req.body;
+    try {
+        // Logic to update status based on new method, but strictly for unpaid/active transitions
+        let statusUpdate = "";
+        if (['cashapp', 'venmo', 'paypal'].includes(paymentMethod)) {
+            statusUpdate = ", status = CASE WHEN status = 'pending' THEN 'awaiting_payment' ELSE status END";
+        } else if (paymentMethod === 'cash') {
+            statusUpdate = ", status = CASE WHEN status = 'awaiting_payment' THEN 'pending' ELSE status END";
+        }
+
+        await pool.query(`UPDATE orders SET payment_method = $1 ${statusUpdate} WHERE id = $2`, [paymentMethod, id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/orders', async (req, res) => {
     console.log('Incoming order:', req.body);
-    const { customerName, items, total, notes, tip, discountCodeId, discountAmount, deliveryType, deliveryLocation, paymentMethod, couponCode } = req.body;
+    const { customerName, items, total, notes, tip, discountCodeId, discountAmount, deliveryType, deliveryLocation, paymentMethod, couponCode, unlockCode, phoneNumber, gpsLat, gpsLng } = req.body;
 
-    let orderPaymentStatus = 'unpaid'; // Default to unpaid
-    let orderStatus = 'pending'; // Default to pending (active/cooking)
+    let orderPaymentStatus = 'unpaid'; 
+    let orderStatus = 'pending'; 
     
     let appliedDiscountCodeId = discountCodeId; 
     let calculatedDiscountAmount = discountAmount;
@@ -233,37 +261,30 @@ app.post('/api/orders', async (req, res) => {
     const configRes = await pool.query("SELECT config_value FROM site_config WHERE config_key = 'cash_unlock_code'");
     const cashUnlockCode = configRes.rows.length > 0 ? configRes.rows[0].config_value : 'familycash';
 
+    // 1. Discount Logic (couponCode)
     if (couponCode) {
-        if (couponCode.toLowerCase() === cashUnlockCode.toLowerCase()) {
-            // Cash Unlock Code Logic
-            validatedCouponCode = cashUnlockCode;
-        } else {
-            // Check for other discount codes
-            const discountRes = await pool.query("SELECT * FROM discount_codes WHERE code = $1 AND is_active = true", [couponCode.toUpperCase()]);
-            if (discountRes.rows.length > 0) {
-                const discount = discountRes.rows[0];
-                appliedDiscountCodeId = discount.id;
-                validatedCouponCode = couponCode.toUpperCase();
-                // Recalculate discount amount on backend
-                if (discount.type === 'percent') {
-                    calculatedDiscountAmount = total * (discount.value / 100);
-                } else if (discount.type === 'flat') {
-                    calculatedDiscountAmount = discount.value;
-                }
-            } else {
-                return res.status(400).json({ error: 'Invalid coupon code provided.' });
+        const discountRes = await pool.query("SELECT * FROM discount_codes WHERE code = $1 AND is_active = true", [couponCode.toUpperCase()]);
+        if (discountRes.rows.length > 0) {
+            const discount = discountRes.rows[0];
+            appliedDiscountCodeId = discount.id;
+            validatedCouponCode = couponCode.toUpperCase();
+            
+            if (discount.type === 'percent') {
+                calculatedDiscountAmount = total * (discount.value / 100);
+            } else if (discount.type === 'flat') {
+                calculatedDiscountAmount = discount.value;
             }
-        }
+        } 
     }
 
-    // Payment Method Logic
-    if (paymentMethod === 'cashapp' || paymentMethod === 'venmo') {
+    // 2. Payment Method Logic (unlockCode for Cash)
+    if (['cashapp', 'venmo', 'paypal'].includes(paymentMethod)) {
         orderStatus = 'awaiting_payment';
     } else if (paymentMethod === 'cash') {
-        if (validatedCouponCode !== cashUnlockCode) {
-             return res.status(403).json({ error: 'Cash payment not authorized without valid code.' });
+        // Check unlockCode specifically
+        if (!unlockCode || unlockCode.toLowerCase() !== cashUnlockCode.toLowerCase()) {
+             return res.status(403).json({ error: 'Cash payment not authorized without valid unlock code.' });
         }
-        // Cash orders go to pending (active) immediately, but marked as unpaid (pay on pickup/delivery)
         orderStatus = 'pending';
     }
 
@@ -271,8 +292,8 @@ app.post('/api/orders', async (req, res) => {
     try {
         await client.query('BEGIN');
         const orderRes = await client.query(
-            'INSERT INTO orders (customer_name, total_price, notes, tip_amount, discount_code_id, discount_amount, delivery_type, delivery_location, payment_method, coupon_code, payment_status, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id',
-            [customerName, total, notes, tip || 0, appliedDiscountCodeId || null, calculatedDiscountAmount || 0, deliveryType, deliveryLocation, paymentMethod || 'cash', validatedCouponCode || null, orderPaymentStatus, orderStatus]
+            'INSERT INTO orders (customer_name, total_price, notes, tip_amount, discount_code_id, discount_amount, delivery_type, delivery_location, payment_method, coupon_code, payment_status, status, phone_number, gps_lat, gps_lng) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id',
+            [customerName, total, notes, tip || 0, appliedDiscountCodeId || null, calculatedDiscountAmount || 0, deliveryType, deliveryLocation, paymentMethod || 'cash', validatedCouponCode || null, orderPaymentStatus, orderStatus, phoneNumber || null, gpsLat || null, gpsLng || null]
         );
         const orderId = orderRes.rows[0].id;
         for (const item of items) {
