@@ -570,23 +570,24 @@ const CartView = ({ cart, updateCartQty, submitOrder, view, setView, API_URL, si
             <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your Name" className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-white" />
             {deliveryType === 'delivery' && (
                 <div className="space-y-4">
-                    <div className="flex gap-2">
-                        <div className="flex-1">
-                            <input type="text" value={siteNumber} onChange={e => { setSiteNumber(e.target.value); setGpsCoords(null); }} placeholder="Campsite Number" className="w-full bg-neutral-900 border border-orange-500/50 rounded-xl p-4 text-white" disabled={!!gpsCoords} />
-                        </div>
-                        <div className="flex items-center text-neutral-500 text-sm">OR</div>
-                        <button onClick={handleGetLocation} className={`flex-1 flex items-center justify-center gap-2 rounded-xl font-bold ${gpsCoords ? 'bg-green-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'}`}>
+                    <input type="text" value={siteNumber} onChange={e => { setSiteNumber(e.target.value); }} placeholder="Campsite Number (Required)" className="w-full bg-neutral-900 border border-orange-500/50 rounded-xl p-4 text-white" required />
+                    <div className="flex items-center gap-2 text-neutral-500 text-sm italic -mt-2">
+                        <AlertCircle className="w-4 h-4" /> Please provide a site number for delivery.
+                    </div>
+                    <div className="flex flex-col gap-2 pt-2">
+                        <button onClick={handleGetLocation} className={`w-full flex items-center justify-center gap-2 rounded-xl font-bold py-3 ${gpsCoords ? 'bg-green-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'}`}>
                             {loadingGps ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
-                            {gpsCoords ? 'Location Set' : 'Use Current GPS'}
+                            {gpsCoords ? 'Location Set' : 'Use Current GPS (Recommended)'}
                         </button>
+                        <p className="text-xs text-neutral-400 text-center">Providing your GPS location helps drivers find you quickly!</p>
                     </div>
                     {gpsCoords && <div className="text-xs text-green-500 text-center">Precise location captured. Drivers will be guided to your pin.</div>}
-                    <input type="tel" value={phoneNumber} onChange={handlePhoneChange} placeholder="Phone Number (Required)" className="w-full bg-neutral-900 border border-orange-500/50 rounded-xl p-4 text-white" />
+                    <input type="tel" value={phoneNumber} onChange={e => handlePhoneChange(e)} placeholder="Phone Number (Required)" className="w-full bg-neutral-900 border border-orange-500/50 rounded-xl p-4 text-white" required />
                 </div>
             )}
         </div>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes..." className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-white h-20" />
-        <button disabled={!name || (deliveryType === 'delivery' && ((!siteNumber && !gpsCoords) || !isPhoneValid))} onClick={handleSubmit} className="w-full bg-green-600 hover:bg-green-700 disabled:bg-neutral-800 disabled:text-neutral-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-green-900/20">
+        <button disabled={!name || (deliveryType === 'delivery' && (!siteNumber || !isPhoneValid))} onClick={handleSubmit} className="w-full bg-green-600 hover:bg-green-700 disabled:bg-neutral-800 disabled:text-neutral-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-green-900/20">
             {selectedPaymentMethod === 'cash' ? `Place Order (Cash $${finalTotal.toFixed(2)})` : `Place Order & Pay $${finalTotal.toFixed(2)}`}
         </button>
       </div>
@@ -944,9 +945,9 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
             <button onClick={logout} className="text-sm text-neutral-500 hover:text-white">Logout</button>
         </div>
       </div>
-      <div className="flex gap-2 p-4 overflow-x-auto">
+      <div className="flex gap-2 p-4 overflow-x-auto no-scrollbar">
         {['active', 'inventory', 'menu', 'discounts', 'history', 'settings', 'display'].map(tab => (
-           <button key={tab} onClick={() => setAdminTab(tab)} className={`px-4 py-2 rounded-lg font-medium capitalize ${adminTab === tab ? 'bg-orange-600 text-white' : 'bg-neutral-900 text-neutral-400'}`}>
+           <button key={tab} onClick={() => setAdminTab(tab)} className={`px-4 py-2 rounded-lg font-medium capitalize whitespace-nowrap flex-shrink-0 ${adminTab === tab ? 'bg-orange-600 text-white' : 'bg-neutral-900 text-neutral-400'}`}>
                {tab === 'display' ? <div className="flex items-center gap-2"><Monitor className="w-4 h-4" /> Store Display</div> : tab}
            </button>
         ))}
@@ -1180,26 +1181,50 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
         )}
         {adminTab === 'discounts' && (
              <div className="space-y-6">
-                 <h3 className="text-xl font-bold mb-4">Discounts</h3>
-                 <div className="flex gap-2 mb-4">
-                     <input type="text" placeholder="New Discount Code" value={newDiscount.code} onChange={e => setNewDiscount({...newDiscount, code: e.target.value})} className="flex-1 bg-neutral-900 border border-neutral-800 rounded p-2 text-white" />
-                     <select value={newDiscount.type} onChange={e => setNewDiscount({...newDiscount, type: e.target.value})} className="bg-neutral-900 border border-neutral-800 rounded p-2 text-white">
-                         <option value="percent">Percent</option>
-                         <option value="flat">Flat Amount</option>
-                     </select>
-                     <input type="number" step="0.01" placeholder="Value" value={newDiscount.value} onChange={e => setNewDiscount({...newDiscount, value: e.target.value})} className="w-24 bg-neutral-900 border border-neutral-800 rounded p-2 text-white" />
-                     <button onClick={handleAddDiscount} className="bg-neutral-800 px-4 rounded hover:bg-white hover:text-black">Add</button>
+                 <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl">
+                    <h3 className="text-xl font-bold mb-4 text-white">Manage Discounts</h3>
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <div className="flex-1">
+                            <label className="text-xs text-neutral-500 block mb-1">Code</label>
+                            <input type="text" placeholder="e.g. SUMMER2024" value={newDiscount.code} onChange={e => setNewDiscount({...newDiscount, code: e.target.value.toUpperCase()})} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white uppercase font-bold tracking-wide" />
+                        </div>
+                        <div className="flex-1 md:flex-none md:w-48">
+                            <label className="text-xs text-neutral-500 block mb-1">Type</label>
+                            <select value={newDiscount.type} onChange={e => setNewDiscount({...newDiscount, type: e.target.value})} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white">
+                                <option value="percent">Percentage (%)</option>
+                                <option value="flat">Flat Amount ($)</option>
+                            </select>
+                        </div>
+                        <div className="flex-1 md:flex-none md:w-32">
+                             <label className="text-xs text-neutral-500 block mb-1">Value</label>
+                             <input type="number" step="0.01" placeholder="0.00" value={newDiscount.value} onChange={e => setNewDiscount({...newDiscount, value: e.target.value})} className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white" />
+                        </div>
+                        <div className="flex items-end">
+                            <button onClick={handleAddDiscount} className="w-full md:w-auto bg-orange-600 hover:bg-orange-700 text-white font-bold px-6 py-3 rounded-lg flex items-center justify-center gap-2 shadow-lg shadow-orange-900/20"><Plus className="w-5 h-5" /> Add</button>
+                        </div>
+                    </div>
                  </div>
-                 <div className="grid gap-2">
+                 
+                 <div className="grid gap-3">
                      {adminData.discounts.map(d => (
-                         <div key={d.id} className="flex items-center justify-between bg-neutral-900 border border-neutral-800 p-3 rounded-lg">
-                             <span className="font-bold text-white">{d.code}</span>
-                             <span className="text-orange-400">{d.type === 'percent' ? `${d.value}% OFF` : `$${d.value} OFF`}</span>
-                             <button onClick={() => handleDeleteDiscount(d.id)} className="text-neutral-500 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                         <div key={d.id} className="flex items-center justify-between bg-neutral-900 border border-neutral-800 p-4 rounded-xl hover:border-neutral-700 transition-colors">
+                             <div className="flex items-center gap-4">
+                                 <div className="bg-green-900/20 p-3 rounded-full"><Tag className="w-6 h-6 text-green-500" /></div>
+                                 <div>
+                                     <h4 className="font-bold text-white text-lg tracking-wider">{d.code}</h4>
+                                     <p className="text-green-400 text-sm font-medium">{d.type === 'percent' ? `${d.value}% Discount` : `$${parseFloat(d.value).toFixed(2)} Off`}</p>
+                                 </div>
+                             </div>
+                             <button onClick={() => handleDeleteDiscount(d.id)} className="p-2 bg-neutral-950 text-neutral-500 hover:text-red-500 hover:bg-red-900/20 rounded-lg transition-all"><Trash2 className="w-5 h-5" /></button>
                          </div>
                      ))}
                  </div>
-                 {(!adminData.discounts || adminData.discounts.length === 0) && <p className="text-center text-neutral-600 italic">No discounts added yet.</p>}
+                 {(!adminData.discounts || adminData.discounts.length === 0) && (
+                     <div className="text-center py-12 bg-neutral-900/50 border border-neutral-800 border-dashed rounded-xl">
+                         <Tag className="w-12 h-12 text-neutral-600 mx-auto mb-3" />
+                         <p className="text-neutral-500">No active discount codes.</p>
+                     </div>
+                 )}
              </div>
         )}
         {adminTab === 'history' && (

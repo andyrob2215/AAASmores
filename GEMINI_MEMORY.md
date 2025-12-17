@@ -1,6 +1,6 @@
 # Gemini Agent Memory - AAASmores Project
 
-**Date:** Sunday, December 14, 2025
+**Date:** Tuesday, December 16, 2025
 **Current Directory:** `C:\Users\andyr\Desktop\aaasmored`
 
 ## Project Status
@@ -8,6 +8,22 @@ This is a React frontend for the "AAASmores" ordering system.
 - **Frontend:** React + Vite + Tailwind.
 - **Deployment:** Builds to `dist/`, then contents are copied to `unraid_stuff/www`.
 - **Backend:** Running separately (likely Dockerized on Unraid).
+
+## Recent Changes (Session: Dec 16, 2025)
+1.  **Admin Dashboard - Discounts Tab:**
+    -   **Implemented:** Added a fully functional 'Discounts' tab to the Admin Dashboard.
+    -   **Functionality:** Allows admins to create new discount codes (Percent or Flat amount) and delete existing ones.
+    -   **UI:** Styled the tab for mobile responsiveness, stacking the add form on smaller screens.
+    -   **Fix:** Resolved an issue where the discounts page was blank by adding the missing rendering logic.
+
+2.  **Delivery Option Enhancements:**
+    -   **Site Number Requirement:** Made the "Campsite Number" field strictly required for delivery orders. It is no longer disabled when GPS is set.
+    -   **GPS Optional but Encouraged:** Updated the UI to clearly label GPS location as recommended but optional. Added encouraging text explaining its benefit for drivers.
+    -   **Validation:** Updated form submission logic to enforce the site number requirement.
+
+3.  **UI/UX Improvements:**
+    -   **Mobile Navigation:** Fixed an issue where the Admin Dashboard tabs would overflow/squish on mobile devices by adding horizontal scrolling and preventing text wrapping.
+    -   **Styling:** Improved the visual layout of the discounts management section.
 
 ## Recent Changes (Session: Dec 14, 2025)
 1.  **Payment & Order Workflow Overhaul:**
