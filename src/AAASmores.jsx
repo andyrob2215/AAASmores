@@ -1107,6 +1107,101 @@ const AdminDashboard = ({ staffAuth, setStaffAuth, API_URL, showNotification, se
             )}
           </div>
         )}
+        {adminTab === 'menu' && (
+          <div>
+            {!editingItem ? (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center"><h3 className="text-xl font-bold">Menu Items</h3><button onClick={() => setEditingItem({ name: '', description: '', price: 0, category: 'Smore', ingredientIds: [], manual_availability: true, is_visible: true })} className="bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded-lg font-bold text-sm flex gap-2"><Plus className="w-4 h-4" /> Add Item</button></div>
+                
+                {/* Active Items */}
+                <div className="grid gap-4">
+                  {visibleItems.map(item => (
+                    <div key={item.id} className="bg-neutral-900 border border-neutral-800 p-4 rounded-xl flex justify-between items-center">
+                      <div><div className="font-bold text-lg">{item.name}</div><div className="text-neutral-500 text-sm">${parseFloat(item.price).toFixed(2)}</div></div>
+                      <div className="flex gap-2"><button onClick={() => { const relatedIngredients = adminData.recipes.filter(r => r.menu_item_id === item.id).map(r => ({ id: r.ingredient_id, qty: r.quantity || 1 })); setEditingItem({ ...item, ingredientIds: relatedIngredients }); }} className="p-2 bg-neutral-800 rounded hover:bg-white hover:text-black"><Edit className="w-4 h-4" /></button><button onClick={() => handleDeleteMenu(item.id)} className="p-2 bg-neutral-800 rounded hover:bg-red-600 hover:text-white"><Trash2 className="w-4 h-4" /></button></div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Hidden Items & Raw Ingredients Section */}
+                <div className="border-t border-neutral-800 pt-6 mt-6">
+                  {hiddenItems.length > 0 && (
+                    <div className="mb-8">
+                        <h3 className="text-xl font-bold mb-4 text-neutral-500">Hidden Menu Items</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {hiddenItems.map(item => (
+                                <button 
+                                    key={item.id} 
+                                    onClick={() => { const relatedIngredients = adminData.recipes.filter(r => r.menu_item_id === item.id).map(r => ({ id: r.ingredient_id, qty: r.quantity || 1 })); setEditingItem({ ...item, ingredientIds: relatedIngredients }); }}
+                                    className="bg-neutral-900 border border-red-900/50 text-neutral-400 hover:text-white hover:border-orange-500 px-3 py-1 rounded-full text-sm flex items-center gap-2 transition-colors"
+                                >
+                                    {item.name} <EyeOff className="w-3 h-3" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                  )}
+
+                  <h3 className="text-xl font-bold mb-4">Raw Ingredients</h3>
+                  <div className="flex gap-2 mb-4"><input type="text" placeholder="New Ingredient Name" value={newIngredient} onChange={e => setNewIngredient(e.target.value)} className="flex-1 bg-neutral-900 border border-neutral-800 rounded p-2 text-white" /><button onClick={handleAddIngredient} className="bg-neutral-800 px-4 rounded hover:bg-white hover:text-black">Add</button></div>
+                  <div className="flex flex-wrap gap-2">{adminData.ingredients.map(ing => (<div key={ing.id} className="bg-neutral-900 border border-neutral-800 px-3 py-1 rounded-full text-sm flex items-center gap-2">{ing.name}<button onClick={() => handleDeleteIngredient(ing.id)} className="text-neutral-500 hover:text-red-500"><X className="w-3 h-3" /></button></div>))}</div>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleSaveMenu} className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl space-y-4">
+                  <div className="flex justify-between"><h3 className="text-xl font-bold">{editingItem.id ? 'Edit Item' : 'New Item'}</h3><button type="button" onClick={() => setEditingItem(null)} className="text-neutral-500 hover:text-white"><X className="w-5 h-5" /></button></div>
+                  <div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-neutral-500 block mb-1">Name</label><input required className="w-full bg-neutral-950 border border-neutral-800 rounded p-2" value={editingItem.name} onChange={e => setEditingItem({...editingItem, name: e.target.value})} /></div><div><label className="text-xs text-neutral-500 block mb-1">Price</label><input required type="number" step="0.01" className="w-full bg-neutral-950 border border-neutral-800 rounded p-2" value={editingItem.price} onChange={e => setEditingItem({...editingItem, price: e.target.value})} /></div></div>
+                  <div><label className="text-xs text-neutral-500 block mb-1">Description</label><textarea className="w-full bg-neutral-950 border border-neutral-800 rounded p-2" value={editingItem.description} onChange={e => setEditingItem({...editingItem, description: e.target.value})} /></div>
+                  
+                  {/* VISIBILITY TOGGLE */}
+                  <div className="flex items-center gap-2"><input type="checkbox" checked={editingItem.is_visible} onChange={e => setEditingItem({...editingItem, is_visible: e.target.checked})} className="rounded bg-neutral-950 border-neutral-700 text-orange-600 focus:ring-0" /><label className="text-sm text-neutral-400">Show on Public Menu</label></div>
+
+                  {/* IMAGE UPLOAD */}
+                  <div><label className="text-xs text-neutral-500 block mb-1">Item Image</label><label className="w-full bg-neutral-950 border border-neutral-800 border-dashed rounded p-4 flex flex-col items-center justify-center cursor-pointer hover:border-orange-500/50"><ImageIcon className="w-6 h-6 text-neutral-500 mb-2" /><span className="text-xs text-neutral-400">{imageFile ? imageFile.name : (editingItem.image_url ? 'Replace Image' : 'Upload Image')}</span><input type="file" accept="image/*" className="hidden" onChange={e => setImageFile(e.target.files[0])} /></label>{editingItem.image_url && !imageFile && <div className="mt-2 text-xs text-green-500">Current image set</div>}</div>
+
+                  <div><label className="text-xs text-neutral-500 block mb-2">Recipe (Required Ingredients)</label><div className="grid grid-cols-1 md:grid-cols-2 gap-2 bg-neutral-950 p-4 rounded border border-neutral-800 max-h-60 overflow-y-auto">{adminData.ingredients.map(ing => {
+                      const current = editingItem.ingredientIds?.find(i => i.id === ing.id);
+                      const qty = current ? current.qty : 0;
+                      return (
+                          <div key={ing.id} className={`flex justify-between items-center p-2 rounded ${qty > 0 ? 'bg-orange-900/20 border border-orange-500/30' : 'bg-neutral-900 border border-neutral-800'}`}>
+                              <span className={`text-sm ${qty > 0 ? 'text-orange-200' : 'text-neutral-500'}`}>{ing.name}</span>
+                              <div className="flex items-center gap-2">
+                                  <button type="button" onClick={() => updateRecipeIngredient(ing.id, -1)} className="p-1 bg-neutral-800 hover:bg-neutral-700 rounded text-neutral-400"><Minus className="w-3 h-3" /></button>
+                                  <span className={`text-sm font-bold w-4 text-center ${qty > 0 ? 'text-white' : 'text-neutral-600'}`}>{qty}</span>
+                                  <button type="button" onClick={() => updateRecipeIngredient(ing.id, 1)} className="p-1 bg-neutral-800 hover:bg-neutral-700 rounded text-neutral-400"><Plus className="w-3 h-3" /></button>
+                              </div>
+                          </div>
+                      );
+                  })}</div></div>
+                  <div className="flex gap-2 pt-4"><button type="submit" className="flex-1 bg-green-600 hover:bg-green-700 py-2 rounded font-bold flex items-center justify-center gap-2"><Save className="w-4 h-4"/> Save Item</button><button type="button" onClick={() => { setEditingItem(null); setImageFile(null); }} className="px-6 bg-neutral-800 hover:bg-white hover:text-black rounded">Cancel</button></div>
+              </form>
+            )}
+          </div>
+        )}
+        {adminTab === 'discounts' && (
+             <div className="space-y-6">
+                 <h3 className="text-xl font-bold mb-4">Discounts</h3>
+                 <div className="flex gap-2 mb-4">
+                     <input type="text" placeholder="New Discount Code" value={newDiscount.code} onChange={e => setNewDiscount({...newDiscount, code: e.target.value})} className="flex-1 bg-neutral-900 border border-neutral-800 rounded p-2 text-white" />
+                     <select value={newDiscount.type} onChange={e => setNewDiscount({...newDiscount, type: e.target.value})} className="bg-neutral-900 border border-neutral-800 rounded p-2 text-white">
+                         <option value="percent">Percent</option>
+                         <option value="flat">Flat Amount</option>
+                     </select>
+                     <input type="number" step="0.01" placeholder="Value" value={newDiscount.value} onChange={e => setNewDiscount({...newDiscount, value: e.target.value})} className="w-24 bg-neutral-900 border border-neutral-800 rounded p-2 text-white" />
+                     <button onClick={handleAddDiscount} className="bg-neutral-800 px-4 rounded hover:bg-white hover:text-black">Add</button>
+                 </div>
+                 <div className="grid gap-2">
+                     {adminData.discounts.map(d => (
+                         <div key={d.id} className="flex items-center justify-between bg-neutral-900 border border-neutral-800 p-3 rounded-lg">
+                             <span className="font-bold text-white">{d.code}</span>
+                             <span className="text-orange-400">{d.type === 'percent' ? `${d.value}% OFF` : `$${d.value} OFF`}</span>
+                             <button onClick={() => handleDeleteDiscount(d.id)} className="text-neutral-500 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                         </div>
+                     ))}
+                 </div>
+                 {(!adminData.discounts || adminData.discounts.length === 0) && <p className="text-center text-neutral-600 italic">No discounts added yet.</p>}
+             </div>
+        )}
         {adminTab === 'history' && (
           <div className="space-y-4"><div className="overflow-x-auto rounded-xl border border-neutral-800"><table className="w-full text-left text-sm text-neutral-400"><thead className="bg-neutral-900 uppercase text-xs font-bold text-neutral-500"><tr><th className="px-6 py-4">ID</th><th className="px-6 py-4">Date</th><th className="px-6 py-4">Time</th><th className="px-6 py-4">Customer</th><th className="px-6 py-4 text-right">Total</th></tr></thead><tbody className="divide-y divide-neutral-800 bg-neutral-900/50">{adminData.history.map(h => (<tr key={h.id} onClick={() => handleViewOrder(h)} className="hover:bg-neutral-800 cursor-pointer transition-colors"><td className="px-6 py-4 font-mono text-orange-500">#{h.id}</td><td className="px-6 py-4">{formatDate(h.created_at)}</td><td className="px-6 py-4">{formatTime(h.created_at)}</td><td className="px-6 py-4 font-bold text-white">{h.customer_name}</td><td className="px-6 py-4 text-right text-white">${parseFloat(h.total_price).toFixed(2)}</td></tr>))}</tbody></table></div></div>
         )}
